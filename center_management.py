@@ -21,7 +21,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.3.1"
+APP_VERSION = "2.4.0"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -29,6 +29,59 @@ BRANCH = "الإسكندرية"
 BASE = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE, "center_management.db")
 CRASH_LOG = os.path.join(BASE, "crash.log")
+
+# ---- الشبكة المحلية (LAN): وضع مستقل / سيرفر (جهاز رئيسي) / محطة ----
+try:
+    import net as netmod
+except Exception:                       # لو الملف مش موجود، البرنامج يشتغل عادي (مستقل)
+    netmod = None
+
+NET_CFG = netmod.load_config(BASE) if netmod else {"mode": "standalone"}
+NET_MODE = NET_CFG.get("mode", "standalone")
+NET_STATION = NET_CFG.get("station") or ""
+NET_QUEUE = os.path.join(BASE, netmod.QUEUE_NAME) if netmod else None
+NET_SERVER = None                       # كائن الخادم في وضع «سيرفر»
+NET_STATUS = {"ok": True, "msg": "", "at": None}
+
+
+def apply_cli():
+    """يتيح تشغيل البرنامج بأوضاع الشبكة من سطر الأوامر (اختياري).
+
+    أمثلة:  KhadamatMisr.exe --server
+            KhadamatMisr.exe --client 192.168.1.10 --token xxxx --station الأمن
+    """
+    global NET_MODE, NET_STATION
+    if not netmod:
+        return
+    args = sys.argv[1:]
+    changed = False
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--server":
+            NET_CFG["mode"] = "server"; changed = True
+        elif a == "--standalone":
+            NET_CFG["mode"] = "standalone"; changed = True
+        elif a == "--client" and i + 1 < len(args):
+            NET_CFG["mode"] = "client"; NET_CFG["server_host"] = args[i + 1]; changed = True; i += 1
+        elif a == "--port" and i + 1 < len(args):
+            try:
+                NET_CFG["port"] = int(args[i + 1]); changed = True
+            except ValueError:
+                pass
+            i += 1
+        elif a == "--token" and i + 1 < len(args):
+            NET_CFG["token"] = args[i + 1]; changed = True; i += 1
+        elif a == "--station" and i + 1 < len(args):
+            NET_CFG["station"] = args[i + 1]; changed = True; i += 1
+        i += 1
+    if changed:
+        NET_MODE = NET_CFG.get("mode", "standalone")
+        NET_STATION = NET_CFG.get("station") or NET_STATION
+        try:
+            netmod.save_config(BASE, NET_CFG)
+        except Exception:
+            pass
 
 # ---- الألوان والخطوط (وضع نهاري / ليلي) ----
 MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
@@ -258,11 +311,17 @@ def hash_pw(pw, salt):
     return hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"), bytes.fromhex(salt), 120000).hex()
 
 
-def authenticate(username, password):
-    """يرجع (بيانات المستخدم, "") عند النجاح أو (None, سبب الفشل)."""
-    with db() as con:
+def authenticate_local(username, password):
+    """التحقق من كلمة المرور على قاعدة البيانات المحلية (يُستخدم في وضع السيرفر).
+
+    يتصل بالملف المحلي مباشرة (بدون db) حتى لا يتأثر بوضع المحطة.
+    """
+    con = sqlite3.connect(DB_PATH)
+    try:
         r = con.execute("SELECT id,username,pw_hash,salt,is_admin,active,perms FROM users WHERE username=?",
                         (username.strip(),)).fetchone()
+    finally:
+        con.close()
     if not r or not r[2] or not r[3] or not hmac.compare_digest(hash_pw(password, r[3]), r[2]):
         return None, "wrong"
     if not r[5]:
@@ -274,6 +333,19 @@ def authenticate(username, password):
     return {"id": r[0], "username": r[1], "is_admin": bool(r[4]), "perms": perms}, ""
 
 
+def authenticate(username, password):
+    """يرجع (بيانات المستخدم, "") عند النجاح أو (None, سبب الفشل).
+
+    في وضع «محطة» تتحقق كلمة المرور عند السيرفر نفسه (لا تُنقل أي بيانات مستخدمين).
+    """
+    if netmod and NET_MODE == netmod.MODE_CLIENT:
+        try:
+            return netmod.login(NET_CFG, username, password)
+        except Exception:
+            return None, "offline"
+    return authenticate_local(username, password)
+
+
 def _ident(name):
     """يتحقق أن اسم جدول/عمود آمن قبل إدخاله في نص SQL (حماية من الحقن)."""
     if not isinstance(name, str) or not _IDENT_RE.match(name):
@@ -283,6 +355,8 @@ def _ident(name):
 
 def admin_password_is_default():
     """True لو حساب المدير غير موجود أو ما زال على كلمة المرور القديمة/الفارغة."""
+    if netmod and NET_MODE == netmod.MODE_CLIENT:
+        return False                    # كلمة مرور المدير يديرها الجهاز الرئيسي
     try:
         with db() as con:
             r = con.execute("SELECT pw_hash, salt FROM users WHERE username=?", (DEFAULT_ADMIN,)).fetchone()
@@ -379,6 +453,8 @@ def ensure_admin_password(root):
 
     ترجع True لو الحساب جاهز، و False لو المستخدم أغلق النافذة.
     """
+    if netmod and NET_MODE == netmod.MODE_CLIENT:
+        return True                     # كلمة مرور المدير تُطلب على الجهاز الرئيسي فقط
     if not admin_password_is_default():
         return True
     pw = ask_new_password(root, "أول تشغيل - كلمة مرور المدير",
@@ -488,7 +564,18 @@ def init_db(con):
 
 @contextmanager
 def db():
-    """اتصال يُغلق دائمًا ويحفظ التغييرات تلقائيًا."""
+    """اتصال يُغلق دائمًا ويحفظ التغييرات تلقائيًا.
+
+    في وضع «محطة» يتم توجيه الاتصال للسيرفر عبر الشبكة بدل الملف المحلي،
+    فتشترك كل الأجهزة في قاعدة بيانات واحدة على الجهاز الرئيسي.
+    """
+    if netmod and NET_MODE == netmod.MODE_CLIENT:
+        con = netmod.RemoteConnection(NET_CFG, queue_path=NET_QUEUE)
+        try:
+            yield con
+        finally:
+            con.close()
+        return
     con = sqlite3.connect(DB_PATH)
     try:
         init_db(con)
@@ -516,6 +603,8 @@ def backup_now(tag=None):
 
 def auto_backup(keep=14):
     """نسخة تلقائية مرة كل يوم عند فتح البرنامج، وتُحفظ آخر 14 نسخة يومية."""
+    if netmod and NET_MODE == netmod.MODE_CLIENT:
+        return                          # النسخ الاحتياطي مسؤولية الجهاز الرئيسي
     if not os.path.exists(DB_PATH):
         return
     tag = date.today().strftime("%Y-%m-%d")
@@ -530,6 +619,12 @@ def auto_backup(keep=14):
 
 def db_info():
     """حجم قاعدة البيانات (ميجابايت) وإجمالي السجلات."""
+    if netmod and NET_MODE == netmod.MODE_CLIENT:
+        try:
+            info = netmod.server_info(NET_CFG)
+            return info.get("db_mb", 0), info.get("total", 0), info.get("photos_mb", 0)
+        except Exception:
+            return 0, 0, 0
     size = os.path.getsize(DB_PATH) / 1048576 if os.path.exists(DB_PATH) else 0
     with db() as con:
         total = sum(con.execute(f"SELECT COUNT(*) FROM {_ident(t)}").fetchone()[0]
@@ -541,18 +636,42 @@ PHOTOS_DIR = os.path.join(BASE, "photos")
 
 
 def save_photo(src, prefix):
-    """ينسخ الصورة إلى مجلد photos ويرجع اسم الملف المحفوظ."""
+    """ينسخ الصورة إلى مجلد photos ويرجع اسم الملف المحفوظ.
+
+    في وضع «محطة» تُرفع الصورة للجهاز الرئيسي حتى تظهر لكل الأجهزة.
+    """
     os.makedirs(PHOTOS_DIR, exist_ok=True)
     ext = os.path.splitext(src)[1].lower() or ".jpg"
     name = f"{prefix}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}{ext}"
     shutil.copy2(src, os.path.join(PHOTOS_DIR, name))
+    if netmod and NET_MODE == netmod.MODE_CLIENT:
+        try:
+            netmod.upload_photo(NET_CFG, os.path.join(PHOTOS_DIR, name), name)
+        except Exception:
+            pass
     return name
+
+
+def ensure_photo(name):
+    """يتأكد أن الصورة موجودة محليًا؛ في وضع المحطة ينزّلها من السيرفر عند الحاجة."""
+    if not name:
+        return None
+    path = os.path.join(PHOTOS_DIR, name)
+    if os.path.exists(path):
+        return path
+    if netmod and NET_MODE == netmod.MODE_CLIENT:
+        try:
+            netmod.fetch_photo(NET_CFG, name, path)
+            return path
+        except Exception:
+            return None
+    return None
 
 
 def make_thumb(name, size):
     """يرجع مسار صورة PNG مصغرة (ينشئها عند الحاجة عبر ويندوز) أو None لو تعذر."""
-    src = os.path.join(PHOTOS_DIR, name)
-    if not os.path.exists(src):
+    src = ensure_photo(name)
+    if not src or not os.path.exists(src):
         return None
     tdir = os.path.join(PHOTOS_DIR, "thumbs")
     os.makedirs(tdir, exist_ok=True)
@@ -1785,6 +1904,9 @@ def login_dialog(root):
         pass
     tk.Label(win, text=APP_NAME, bg=BG, fg=INK, font=(FONT, 20, "bold")).pack()
     tk.Label(win, text=f"نظام إدارة المركز - فرع {BRANCH}", bg=BG, fg=MUTED, font=(FONT, 10)).pack(pady=(0, 14))
+    if netmod and NET_MODE == netmod.MODE_CLIENT:
+        tk.Label(win, text=f"🖧  الجهاز الرئيسي: {NET_CFG.get('server_host') or '؟'}   •   المحطة: {NET_STATION}",
+                 bg=BG, fg=PRIMARY, font=(FONT, 9, "bold")).pack(pady=(0, 6))
     box = tk.Frame(win, bg=WHITE, highlightbackground=LINE, highlightthickness=1); box.pack(fill="x", padx=36, pady=4)
     tk.Label(box, text="اسم المستخدم", bg=WHITE, fg=TEXT, font=(FONT, 10, "bold"), anchor="e").pack(fill="x", padx=16, pady=(14, 3))
     u_var, p_var = tk.StringVar(), tk.StringVar()
@@ -1801,6 +1923,9 @@ def login_dialog(root):
         user, why = authenticate(u_var.get(), p_var.get())
         if user:
             res["user"] = user; win.destroy(); return
+        if why == "offline":
+            messagebox.showerror("الشبكة", "تعذر الاتصال بالجهاز الرئيسي.\nاتأكد أن الجهاز الرئيسي مفتوح والبرنامج شغال عليه، وأن الشبكة متصلة.", parent=win)
+            return
         res["tries"] += 1
         if res["tries"] >= 5:
             messagebox.showerror("تسجيل الدخول", "تم إدخال بيانات خاطئة 5 مرات. سيُغلق البرنامج.", parent=win)
@@ -1995,6 +2120,8 @@ class CenterApp:
         um.add_command(label="🎨  الألوان والمظهر", command=self.appearance_dialog)
         if self.user["is_admin"]:
             um.add_command(label="👥  المستخدمون والصلاحيات", command=self.users_dialog)
+            um.add_command(label="🌐  الشبكة (LAN)", command=self.net_dialog)
+            um.add_command(label="📋  سجل العمليات", command=self.audit_dialog)
         um.add_separator()
         um.add_command(label="🚪  تسجيل الخروج", command=self.logout)
         umb_win = hdr.create_window(0, 0, anchor="e" if en else "w", window=self.user_btn)
@@ -2023,8 +2150,9 @@ class CenterApp:
         footer = tk.Frame(self.root, bg=NAVY, height=30)
         footer.pack(side="bottom", fill="x")
         footer.pack_propagate(False)
-        tk.Label(footer, text=f"تصميم وتطوير: {DESIGNER}   |   {APP_NAME} © {date.today().year}",
-                 bg=NAVY, fg=GOLD, font=(FONT, 9, "bold")).pack(expand=True)
+        self.footer_lbl = tk.Label(footer, text=self.footer_text(),
+                                   bg=NAVY, fg=GOLD, font=(FONT, 9, "bold"))
+        self.footer_lbl.pack(expand=True)
 
         shell = tk.Frame(self.root, bg=BG)
         shell.pack(fill="both", expand=True)
@@ -2144,6 +2272,11 @@ class CenterApp:
     def restore_backup(self):
         """إدراج (استرجاع) نسخة احتياطية: تستبدل بيانات البرنامج الحالية ببيانات ملف .db مختار."""
         if not self.need_admin():
+            return
+        if netmod and NET_MODE == netmod.MODE_CLIENT:
+            messagebox.showinfo("إدراج نسخة احتياطية",
+                                "إدراج النسخ الاحتياطية يتم على الجهاز الرئيسي (السيرفر) فقط،\n"
+                                "لأن قاعدة البيانات كلها هناك.")
             return
         path = filedialog.askopenfilename(
             title="اختر ملف النسخة الاحتياطية (.db)",
@@ -2406,11 +2539,222 @@ class CenterApp:
     def manual_backup(self):
         if not self.need_admin():
             return
+        if netmod and NET_MODE == netmod.MODE_CLIENT:
+            try:
+                res = netmod.request_backup(NET_CFG)
+                if res.get("ok"):
+                    messagebox.showinfo("نسخة احتياطية",
+                                        f"تم إنشاء النسخة على الجهاز الرئيسي:\n{res.get('path')}")
+                else:
+                    messagebox.showerror("خطأ", res.get("error") or "تعذر إنشاء النسخة")
+            except Exception as ex:
+                messagebox.showerror("خطأ", f"تعذر الاتصال بالجهاز الرئيسي:\n{ex}")
+            return
         try:
             dest = backup_now()
             messagebox.showinfo("نسخة احتياطية", f"تم حفظ نسخة من قاعدة البيانات:\n{dest}")
         except Exception as ex:
             messagebox.showerror("خطأ", f"تعذر إنشاء النسخة:\n{ex}")
+
+    # ---------- الشبكة (LAN) ----------
+    def footer_text(self):
+        base = f"تصميم وتطوير: {DESIGNER}   |   {APP_NAME} © {date.today().year}"
+        st = self.net_status_text()
+        return base + ("      " + st if st else "")
+
+    def net_status_text(self):
+        if not netmod or NET_MODE == netmod.MODE_STANDALONE:
+            return ""
+        if NET_MODE == netmod.MODE_SERVER:
+            return (f"🟢 الجهاز الرئيسي (سيرفر) — {netmod.local_ip()}:{NET_CFG.get('port')}"
+                    f"   |   محطات متصلة: {NET_STATUS.get('stations', 0)}")
+        host = NET_CFG.get("server_host") or "?"
+        return (f"🟢 متصل بالجهاز الرئيسي: {host}") if NET_STATUS.get("ok") else (f"🔴 غير متصل بالجهاز الرئيسي: {host}")
+
+    def refresh_net_status(self):
+        if not netmod or NET_MODE == netmod.MODE_STANDALONE:
+            return
+        if NET_MODE == netmod.MODE_CLIENT:
+            try:
+                info = netmod.ping(NET_CFG, timeout=3)
+                NET_STATUS["ok"] = True
+                NET_STATUS["stations"] = info.get("stations", 0)
+            except Exception:
+                NET_STATUS["ok"] = False
+        else:
+            NET_STATUS["ok"] = True
+            NET_STATUS["stations"] = len(NET_SERVER.stations) if NET_SERVER else 0
+        try:
+            if getattr(self, "footer_lbl", None):
+                self.footer_lbl.config(text=self.footer_text(),
+                                       fg=GOLD if NET_STATUS.get("ok") else "#ff9b9b")
+        except Exception:
+            pass
+
+    def _can_auto_refresh(self):
+        """ما نعملش تحديث تلقائي وإحنا في نص إدخال أو نافذة مفتوحة (حتى لا تضيع البيانات)."""
+        try:
+            if self.root.grab_current() is not None:
+                return False
+            f = self.root.focus_get()
+            if f is not None and f.winfo_class() in ("Entry", "TEntry", "TCombobox", "Text", "Spinbox"):
+                return False
+        except Exception:
+            return False
+        return True
+
+    def auto_refresh(self):
+        """في وضع المحطة: يعيد تحميل الصفحة لو عدّل جهاز آخر البيانات على السيرفر."""
+        try:
+            secs = int(NET_CFG.get("auto_refresh", 20) or 0)
+        except Exception:
+            secs = 0
+        if netmod and NET_MODE == netmod.MODE_CLIENT and secs > 0:
+            try:
+                info = netmod.ping(NET_CFG, timeout=3)
+                NET_STATUS["ok"] = True
+                v = info.get("version")
+                if getattr(self, "_net_version", None) is None:
+                    self._net_version = v
+                elif v != self._net_version:
+                    self._net_version = v
+                    if self._can_auto_refresh():
+                        self.go(self.active_key or "home")
+            except Exception:
+                NET_STATUS["ok"] = False
+        if getattr(self, "_auto_job", None):
+            try: self.root.after_cancel(self._auto_job)
+            except Exception: pass
+        self._auto_job = self.root.after(max(5, secs or 20) * 1000, self.auto_refresh)
+
+    def net_dialog(self):
+        if not self.need_admin():
+            return
+        if not netmod:
+            messagebox.showerror("الشبكة", "ملف net.py غير موجود بجوار البرنامج."); return
+        win = tk.Toplevel(self.root)
+        win.title("الشبكة المحلية (LAN)"); win.configure(bg=BG); win.resizable(False, False)
+        w, h = 580, 600
+        win.geometry(f"{w}x{h}+{(win.winfo_screenwidth() - w) // 2}+{max(0, (win.winfo_screenheight() - h) // 2 - 30)}")
+        tk.Label(win, text="🌐  إعداد الشبكة المحلية", bg=BG, fg=INK, font=(FONT, 15, "bold")).pack(pady=(16, 2))
+        tk.Label(win, text="خلّي جهازًا واحدًا «رئيسي (سيرفر)» والباقي «محطة»، واكتب نفس المنفذ وكلمة الربط في الكل.",
+                 bg=BG, fg=MUTED, font=(FONT, 9), wraplength=520, justify="center").pack()
+
+        mode = tk.StringVar(value=NET_CFG.get("mode", "standalone"))
+        host = tk.StringVar(value=NET_CFG.get("server_host", ""))
+        port = tk.StringVar(value=str(NET_CFG.get("port", 8765)))
+        token = tk.StringVar(value=NET_CFG.get("token", ""))
+        station = tk.StringVar(value=NET_STATION or "")
+        refresh = tk.StringVar(value=str(NET_CFG.get("auto_refresh", 20)))
+
+        body = tk.Frame(win, bg=BG); body.pack(fill="x", padx=24, pady=8)
+        tk.Label(body, text="وضع الجهاز", bg=BG, fg=TEXT, font=(FONT, 10, "bold"), anchor="e").pack(fill="x", pady=(4, 2))
+        for val, lbl in (("standalone", "مستقل (قاعدة بيانات محلية على نفس الجهاز)"),
+                         ("server", "جهاز رئيسي / سيرفر (يملك قاعدة البيانات)"),
+                         ("client", "محطة (تبعث البيانات للجهاز الرئيسي)")):
+            tk.Radiobutton(body, text=lbl, value=val, variable=mode, bg=BG, fg=TEXT, anchor="e",
+                           selectcolor=WHITE, activebackground=BG, font=(FONT, 10, "bold")).pack(fill="x", padx=30)
+
+        def row(label, var, show=None):
+            fr = tk.Frame(body, bg=BG); fr.pack(fill="x", pady=4)
+            tk.Label(fr, text=label, bg=BG, fg=TEXT, font=(FONT, 10, "bold"), width=22, anchor="e").pack(side="right", padx=6)
+            e = tk.Entry(fr, textvariable=var, font=(FONT, 11), justify="right", bg=ENTRY, fg=TEXT, relief="solid", bd=1)
+            if show: e.config(show=show)
+            e.pack(side="right", fill="x", expand=True, padx=6)
+            return e
+
+        row("عنوان الجهاز الرئيسي", host)
+        row("المنفذ (Port)", port)
+        row("كلمة الربط (Token)", token)
+        row("اسم المحطة", station)
+        row("تحديث تلقائي (ثواني)", refresh)
+
+        info = tk.Label(win, text="", bg=BG, fg=PRIMARY, font=(FONT, 9, "bold"), wraplength=520, justify="center")
+        info.pack(pady=4)
+
+        def show_info():
+            if mode.get() == "server":
+                info.config(text=f"عنوان هذا الجهاز على الشبكة: {netmod.local_ip()}   (المنفذ {port.get()})\n"
+                                 "اكتب نفس المنفذ وكلمة الربط في كل محطة، واسمح للمنفذ في جدار الحماية (Windows Firewall).",
+                            fg=GREEN)
+            elif mode.get() == "client":
+                info.config(text="اكتب عنوان الجهاز الرئيسي (مثال: 192.168.1.10) ونفس كلمة الربط.", fg=PRIMARY)
+            else:
+                info.config(text="الوضع المستقل: كل البيانات محفوظة على هذا الجهاز فقط.", fg=PRIMARY)
+        mode.trace_add("write", lambda *_: show_info()); show_info()
+
+        def gen_token():
+            token.set(netmod.new_token()); show_info()
+        def test():
+            try:
+                cfg = dict(NET_CFG); cfg.update({"mode": "client", "server_host": host.get().strip(),
+                                                 "port": int(port.get() or 8765), "token": token.get().strip()})
+                res = netmod.ping(cfg, timeout=5)
+                info.config(text=f"✅ تم الاتصال بالجهاز الرئيسي بنجاح (الإصدار {res.get('proto')}).", fg=GREEN)
+            except Exception as ex:
+                info.config(text=f"❌ فشل الاتصال: {ex}", fg=RED)
+        def save():
+            try:
+                p = int(port.get())
+            except ValueError:
+                messagebox.showwarning("خطأ", "المنفذ لازم يكون رقم.", parent=win); return
+            try:
+                r = int(refresh.get() or 0)
+            except ValueError:
+                r = 20
+            NET_CFG.update({"mode": mode.get(), "server_host": host.get().strip(), "port": p,
+                            "token": token.get().strip(), "station": station.get().strip(),
+                            "auto_refresh": r})
+            try:
+                netmod.save_config(BASE, NET_CFG)
+            except Exception as ex:
+                messagebox.showerror("خطأ", f"تعذر حفظ الإعدادات:\n{ex}", parent=win); return
+            messagebox.showinfo("تم", "تم حفظ إعدادات الشبكة.\nأعد تشغيل البرنامج لتطبيقها.", parent=win)
+            win.destroy()
+
+        btns = tk.Frame(win, bg=BG); btns.pack(pady=10)
+        self.btn(btns, "💾 حفظ", save, GREEN).pack(side="right", padx=5)
+        self.btn(btns, "🔑 توليد كلمة ربط", gen_token, BLUE).pack(side="right", padx=5)
+        self.btn(btns, "🔌 اختبار الاتصال", test, PRIMARY).pack(side="right", padx=5)
+        self.btn(btns, "إلغاء", win.destroy, MUTED).pack(side="right", padx=5)
+        tk.Label(win, text=f"الوضع الحالي: {NET_CFG.get('mode')}   |   محطة هذا الجهاز: {NET_STATION}",
+                 bg=BG, fg=MUTED, font=(FONT, 9)).pack(side="bottom", pady=8)
+        win.bind("<Escape>", lambda e: win.destroy())
+        try: win.grab_set()
+        except Exception: pass
+
+    def audit_dialog(self):
+        if not self.need_admin():
+            return
+        if netmod and NET_MODE == netmod.MODE_CLIENT:
+            try:
+                rows = netmod.fetch_audit(NET_CFG)
+            except Exception as ex:
+                messagebox.showerror("سجل العمليات", f"تعذر جلب السجل من الجهاز الرئيسي:\n{ex}"); return
+        else:
+            rows = netmod.audit_rows(DB_PATH) if netmod else []
+        win = tk.Toplevel(self.root)
+        win.title("سجل العمليات"); win.configure(bg=BG)
+        w, h = 1000, 620
+        win.geometry(f"{w}x{h}+{(win.winfo_screenwidth() - w) // 2}+{max(0, (win.winfo_screenheight() - h) // 2 - 30)}")
+        tk.Label(win, text="📋  سجل العمليات (مين أضاف/عدّل/حذف ومن أنهي جهاز)", bg=BG, fg=INK,
+                 font=(FONT, 14, "bold")).pack(pady=10)
+        cols = ("ts", "username", "station", "action", "table_name", "detail")
+        heads = ("الوقت", "المستخدم", "الجهاز", "العملية", "الجدول", "تفاصيل")
+        frame = tk.Frame(win, bg=BG); frame.pack(fill="both", expand=True, padx=12, pady=6)
+        tv = ttk.Treeview(frame, columns=cols, show="headings", height=20)
+        for c, hd in zip(cols, heads):
+            tv.heading(c, text=hd)
+            tv.column(c, width=140 if c != "detail" else 330, anchor="center")
+        vs = ttk.Scrollbar(frame, orient="vertical", command=tv.yview); tv.configure(yscrollcommand=vs.set)
+        tv.pack(side="right", fill="both", expand=True); vs.pack(side="left", fill="y")
+        act_ar = {"INSERT": "إضافة", "UPDATE": "تعديل", "DELETE": "حذف"}
+        for r in rows:
+            tv.insert("", "end", values=(r[0], r[1], r[2], act_ar.get(r[3], r[3]), r[4], r[5]))
+        tk.Button(win, text="إغلاق", command=win.destroy, bg=MUTED, fg="white", relief="flat", bd=0,
+                  font=(FONT, 10, "bold"), padx=24, pady=7, cursor="hand2").pack(pady=8)
+        try: win.grab_set()
+        except Exception: pass
 
     def tick(self):
         days = ["الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت", "الأحد"]
@@ -2423,6 +2767,10 @@ class CenterApp:
             try: self.root.after_cancel(self._tick_job)
             except Exception: pass
         self._tick_job = self.root.after(30000, self.tick)
+        if netmod and NET_MODE != netmod.MODE_STANDALONE:
+            self.refresh_net_status()
+            if not getattr(self, "_auto_job", None):
+                self.auto_refresh()
 
     def nav_hover(self, key, on):
         if key != self.active_key:
@@ -2691,7 +3039,10 @@ class CenterApp:
         today, ms = date.today().isoformat(), self.month_start()
         with db() as con:
             def one(sql, *a):
-                return con.execute(sql, a).fetchone()[0]
+                try:
+                    return con.execute(sql, a).fetchone()[0]
+                except Exception:
+                    return 0        # المستخدم المحدود مايشوفش كل الجداول
             stats = [
                 ("زيارات اليوم", one("SELECT COUNT(*) FROM visits WHERE date(created_at)=?", today), "👥", "#2563eb", "#38bdf8", "visits"),
                 ("صيانة هذا الشهر", one("SELECT COUNT(*) FROM maintenance WHERE date(created_at)>=?", ms), "🔧", "#f97316", "#fbbf24", "maint"),
@@ -2944,7 +3295,7 @@ class CenterApp:
             path = make_thumb(name, size)
             if path:
                 return tk.PhotoImage(file=path)
-            src = os.path.join(PHOTOS_DIR, name)
+            src = ensure_photo(name) or os.path.join(PHOTOS_DIR, name)
             if src.lower().endswith((".png", ".gif")):
                 img = tk.PhotoImage(file=src)
                 f = max(1, -(-max(img.width(), img.height()) // size))
@@ -3025,10 +3376,11 @@ class CenterApp:
         def view(key):
             if not photos[key]:
                 return
+            p = ensure_photo(photos[key]) or os.path.join(PHOTOS_DIR, photos[key])
             try:
-                os.startfile(os.path.join(PHOTOS_DIR, photos[key]))
+                os.startfile(p)
             except Exception:
-                messagebox.showinfo("الصورة", f"مسار الصورة:\n{os.path.join(PHOTOS_DIR, photos[key])}", parent=win)
+                messagebox.showinfo("الصورة", f"مسار الصورة:\n{p}", parent=win)
 
         def clear(key):
             photos[key] = ""; refresh(key)
@@ -3703,7 +4055,7 @@ class CenterApp:
         return r[0] if r else ""
 
     def open_invoice(self, name):
-        path = os.path.join(PHOTOS_DIR, name)
+        path = ensure_photo(name) or os.path.join(PHOTOS_DIR, name)
         if not os.path.exists(path):
             messagebox.showwarning("الفاتورة", "ملف الفاتورة غير موجود في مجلد photos."); return
         try:
@@ -5144,7 +5496,45 @@ for _name, _lv, _pg in (
     setattr(CenterApp, _name, _guard(_lv, _pg)(getattr(CenterApp, _name)))
 
 
+def start_net_server():
+    """يشغّل خادم الشبكة في وضع «جهاز رئيسي (سيرفر)». يرجع كائن الخادم أو None."""
+    global NET_SERVER
+    if not netmod or NET_MODE != netmod.MODE_SERVER:
+        return None
+    if NET_SERVER and NET_SERVER.httpd:
+        return NET_SERVER
+
+    def _log(msg):
+        try:
+            with open(os.path.join(BASE, "net.log"), "a", encoding="utf-8") as f:
+                f.write(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "  " + str(msg) + "\n")
+        except Exception:
+            pass
+
+    NET_SERVER = netmod.Server(
+        DB_PATH,
+        token=NET_CFG.get("token", ""),
+        verify=lambda u, p: authenticate_local(u, p)[0],
+        photos_dir=PHOTOS_DIR,
+        backup_fn=backup_now,
+        log=_log,
+    )
+    try:
+        NET_SERVER.start(NET_CFG.get("bind_host", "0.0.0.0"), int(NET_CFG.get("port", 8765)))
+    except Exception as ex:
+        _log("تعذر تشغيل السيرفر: %s" % ex)
+        try:
+            messagebox.showerror(
+                "الشبكة", f"تعذر تشغيل خادم الشبكة على المنفذ {NET_CFG.get('port')}:\n{ex}\n\n"
+                          "افتح نافذة «الشبكة (LAN)» من قائمة المستخدم وغيّر المنفذ.")
+        except Exception:
+            pass
+        return None
+    return NET_SERVER
+
+
 if __name__ == "__main__":
+    apply_cli()
     try:
         auto_backup()
     except Exception:
@@ -5174,6 +5564,7 @@ if __name__ == "__main__":
         if not ensure_admin_password(root):
             root.destroy()
             sys.exit(0)
+        start_net_server()
         _user = None
         while _user is None:
             _user = login_dialog(root)
@@ -5204,12 +5595,13 @@ if __name__ == "__main__":
 
 
 # ============================================================================
-#  ★ نقطة نهاية آخر تحديث (END OF LAST UPDATE) — الإصدار 2.3.1 ★
+#  ★ نقطة نهاية آخر تحديث (END OF LAST UPDATE) — الإصدار 2.4.0 ★
 # ----------------------------------------------------------------------------
 #  كل الكود فوق السطر ده خلص ومتّفق عليه. أي إضافة أو تعديل جديد يبدأ من هنا.
 #
-#  آخر حاجة اتعملت: إصلاح تشكيل العربي في خانات الجداول وقيم القوائم المنسدلة
-#  على لينكس، مع الحفاظ على قراءة البيانات خام نظيفة (i18n.py: _shape / _khm_raw_cells).
+#  آخر حاجة اتعملت: تشغيل البرنامج على شبكة محلية (LAN) — جهاز رئيسي «سيرفر»
+#  وباقي الأجهزة «محطات»، مع فحص صلاحيات على السيرفر وسجل عمليات وتحديث تلقائي
+#  وطابور أوفلاين (الملف net.py + أوضاع التشغيل في db()/authenticate()).
 #
 #  قبل ما تبدأ أي تحديث، افتح ملف «التطوير.md» — فيه:
 #    • آخر نقطة توقف (الإصدار + آخر commit + آخر بناء ناجح)

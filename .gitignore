@@ -9,6 +9,11 @@ backups/
 invoices/
 exports/
 
+# إعدادات الشبكة (فيها كلمة الربط) وطابور العمليات غير المرسلة
+net_settings.json
+net_queue.jsonl
+net.log
+
 # مخرجات التشغيل والبناء
 __pycache__/
 *.pyc

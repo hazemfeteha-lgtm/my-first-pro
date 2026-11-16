@@ -18,6 +18,15 @@ for line in io.open(SRC, encoding="utf-8-sig"):
         APP_VERSION = line.split("=", 1)[1].strip().strip('"')
         break
 
+# آخر نقطة توقف (حدّثها بعد كل بناء/رفع)
+LAST_COMMIT = "TBD"
+LAST_RUN = "TBD"
+EXE_BYTES = "TBD"
+EXE_MD5 = "TBD"
+PKG_NAME = "TBD"
+PKG_FILES = "TBD"
+SHOTS = "TBD"
+
 
 def structure(path):
     src = io.open(path, encoding="utf-8-sig").read()
@@ -39,6 +48,8 @@ def structure(path):
 def main():
     cm, cm_lines = structure(SRC)
     i18n_lines = sum(1 for _ in io.open(os.path.join(ROOT, "i18n.py"), encoding="utf-8-sig"))
+    net_path = os.path.join(ROOT, "net.py")
+    net_lines = sum(1 for _ in io.open(net_path, encoding="utf-8-sig")) if os.path.exists(net_path) else 0
 
     buf = []
     w = buf.append
@@ -54,11 +65,11 @@ def main():
     w(f"| الإصدار الحالي | `{APP_VERSION}` |")
     w("| الفرع | `khadamat-misr` |")
     w("| المستودع | `hazemfeteha-lgtm/my-first-pro` |")
-    w("| آخر commit | `31014ae` — علامة «نقطة نهاية آخر تحديث» + ملف التطوير (2.3.1) |")
-    w("| آخر بناء ناجح | GitHub Actions run `43841093803` |")
-    w("| ملف exe | `KhadamatMisr.exe` · 16,249,406 بايت · MD5 `a3c6f59f8501db7de881d38f955ebb0e` |")
-    w("| الحزمة | `KhadamatMisr_v2.3.1_windows.zip` · 636 ملف |")
-    w("| عدد اللقطات | 39 لقطة مصحّحة + `all_screens.png` + `gallery.html` |")
+    w(f"| آخر commit | `{LAST_COMMIT}` |")
+    w(f"| آخر بناء ناجح | GitHub Actions run `{LAST_RUN}` |")
+    w(f"| ملف exe | `KhadamatMisr.exe` · {EXE_BYTES} بايت · MD5 `{EXE_MD5}` |")
+    w(f"| الحزمة | `{PKG_NAME}` · {PKG_FILES} ملف |")
+    w(f"| عدد اللقطات | {SHOTS} لقطة + `all_screens.png` + `gallery.html` |")
     w("")
     w("### خلص (Done)")
     w("")
@@ -66,14 +77,18 @@ def main():
     w("- 2.2.0: تقارير حضور الجهات، نوعا تقرير `govatt`/`govstaff`، 7 لوحات ألوان + وضع ليلي + 3 أشكال عرض.")
     w("- 2.3.0: حضور/انصراف بضغطة واحدة بساعة الجهاز (`clock_now`).")
     w("- 2.3.1: تشكيل العربي في خانات الجداول + قيم القوائم على لينكس، مع قراءة خام نظيفة.")
+    w("- 2.4.0: **شبكة LAN** — جهاز رئيسي (سيرفر) + محطات، باسورد محدود لكل جهاز،")
+    w("  فحص صلاحيات على السيرفر نفسه، سجل عمليات (مين أضاف إيه ومن أنهي جهاز)،")
+    w("  تحديث تلقائي للشاشات، رفع/تنزيل الصور، وطابور أوفلاين لو الشبكة قطعت.")
     w("")
     w("### لسه (Pending) — ابدأ من هنا")
     w("")
     w("| # | المطلوب | الملف/الدوال |")
     w("|---|---|---|")
-    w("| 1 | ترجمة تقارير Excel والطباعة للإنجليزي | `i18n.py` + `build_report` (1288) + `report_sections` (1103) + `gov_att_sections` (1224) + `_style_sheet` (1051) |")
+    w("| 1 | ترجمة تقارير Excel والطباعة للإنجليزي | `i18n.py` + `build_report` + `report_sections` + `gov_att_sections` + `_style_sheet` |")
     w("| 2 | تشكيل حقول الإدخال (Entry) على لينكس | `i18n.install()` في `i18n.py` |")
     w("| 3 | إعادة هيكلة الملف الواحد لموديولات | تقسيم `center_management.py` |")
+    w("| 4 | تحسين الشبكة (اختياري) | إشعار لحظي بدل polling · قناة آمنة TLS · صلاحية أوفلاين أدق (lastrowid) — `net.py` |")
     w("")
     w("## 2) خريطة الملفات")
     w("")
@@ -81,13 +96,15 @@ def main():
     w("|---|---|---|")
     w(f"| `center_management.py` | {cm_lines} سطر | كل منطق البرنامج والواجهة |")
     w(f"| `i18n.py` | {i18n_lines} سطر | القاموس عربي/إنجليزي + تشكيل العربي + patch واجهة Tk |")
+    w(f"| `net.py` | {net_lines} سطر | طبقة الشبكة: سيرفر LAN + عميل + صلاحيات + سجل عمليات |")
     w("| `libs/` | — | `arabic_reshaper`, `bidi`, `openpyxl` (مضمّنة) |")
     w("| `img/`, `logo.ico` | — | الأيقونات |")
     w("| `photos/` | — | صور العاملين (بيانات عملاء — لا ترفع) |")
     w("| `center_management.db` | — | قاعدة البيانات (بيانات عملاء — لا ترفع) |")
+    w("| `net_settings.json` | — | إعدادات الشبكة (وضع/عنوان/منفذ/توكن) — يُنشأ تلقائيًا |")
     w("| `KhadamatMisr.spec`, `build_exe.bat` | — | إعداد بناء الـ exe |")
     w("| `.github/workflows/` | — | بناء ويندوز على GitHub Actions |")
-    w("| `screenshots/` | 39 | اللقطات + المعرض |")
+    w("| `screenshots/` | — | اللقطات + المعرض |")
     w("")
     w("## 3) خريطة الدوال في `center_management.py`")
     w("")
@@ -114,20 +131,22 @@ def main():
     w("")
     w("| الصفحة | الدوال |")
     w("|---|---|")
-    w("| الرئيسية | `show_home` 2689 · `stat_card` 2572 · `quick_info` 2601 |")
-    w("| العاملون | `show_workers` 2862 · `load_workers` 2894 · `worker_dialog` 2956 |")
-    w("| حضور الجهات | `show_govstaff` 4042 · `govstaff_reload` 4089 |")
-    w("| الحضور والانصراف | `show_attendance` 4011 · `build_clock_tab` 4609 · `clock_now` 4701 · `build_permits_tab` 4797 · `build_absence_tab` 4877 |")
-    w("| حضور الجهات (التسجيل) | `show_gov` 4147 · `gov_reload` 4189 · `gov_report_dialog` 4219 |")
-    w("| الزيارات | `show_visits` 2749 |")
-    w("| الصيانة | `show_maintenance` 2779 |")
-    w("| الجرد | `show_inventory` 3311 · `save_inventory` 3442 · `edit_cell` 3413 |")
-    w("| المشتريات | `show_purchases` 3646 · `purchase_dialog` 3836 |")
-    w("| الملاحظات | `show_employees` 2809 |")
-    w("| المقارنة | `show_compare` 4953 · `run_compare` 4987 |")
-    w("| التقارير | `show_reports` 3959 · `build_report` 1288 |")
-    w("| المظهر والألوان | `appearance_dialog` 2078 · `apply_appearance` 2126 |")
-    w("| المستخدمون | `users_dialog` 2246 · `user_edit_dialog` 2307 |")
+    w("| الرئيسية | `show_home` · `stat_card` · `quick_info` |")
+    w("| العاملون | `show_workers` · `load_workers` · `worker_dialog` |")
+    w("| حضور الجهات | `show_govstaff` · `govstaff_reload` |")
+    w("| الحضور والانصراف | `show_attendance` · `build_clock_tab` · `clock_now` · `build_permits_tab` · `build_absence_tab` |")
+    w("| حضور الجهات (التسجيل) | `show_gov` · `gov_reload` · `gov_report_dialog` |")
+    w("| الزيارات | `show_visits` |")
+    w("| الصيانة | `show_maintenance` |")
+    w("| الجرد | `show_inventory` · `save_inventory` · `edit_cell` |")
+    w("| المشتريات | `show_purchases` · `purchase_dialog` |")
+    w("| الملاحظات | `show_employees` |")
+    w("| المقارنة | `show_compare` · `run_compare` |")
+    w("| التقارير | `show_reports` · `build_report` |")
+    w("| المظهر والألوان | `appearance_dialog` · `apply_appearance` |")
+    w("| المستخدمون | `users_dialog` · `user_edit_dialog` |")
+    w("| الشبكة (LAN) | `net_dialog` · `refresh_net_status` · `auto_refresh` · `start_net_server` (خارج الكلاس) |")
+    w("| سجل العمليات | `audit_dialog` · `net.audit_rows` · `net.fetch_audit` |")
     w("")
     w("## 5) قواعد ثابتة (لا تتغيّر)")
     w("")
@@ -135,8 +154,11 @@ def main():
     w("- **ممنوع** تشكيل أي حاجة بتتكتب في قاعدة البيانات — القراءة بترجع النص الخام (خزن `_khm_raw_cells`).")
     w("- **بيانات العملاء** (`center_management.db`, `photos/`) مستثناة من git — لا ترفع.")
     w("- بناء الـ exe على GitHub Actions فقط (`windows-latest`) — مفيش بناء ويندوز محلي.")
+    w("- **الشبكة**: كل استعلامات قاعدة البيانات تمر من `db()` وحدها — في وضع المحطة تتحول لعميل شبكة.")
+    w("  الصلاحيات تُفحص **على السيرفر** حسب جدول `users`، و`net_settings.json` لا يُرفع (فيه التوكن).")
     w("- أي تعديل: عدّل في `KhadamatMisr/` → انسخ للـ `repo/` → commit → push `khadamat-misr` → نزّل الـ artifact → أعد بناء الحزمة واللقطات.")
-    w("- اختبارات قبل التسليم: `verify_clock.py` (23) · `verify_new.py` (38) · `audit_pages.py`.")
+    w("- اختبارات قبل التسليم: `verify_clock.py` (23) · `verify_new.py` (38) · `audit_pages.py` ·")
+    w("  `verify_net.py` (24) · `verify_lan_app.py` (16) · `verify_lan_2proc.py` (6).")
     w("")
 
     io.open(OUT, "w", encoding="utf-8").write("\n".join(buf) + "\n")
