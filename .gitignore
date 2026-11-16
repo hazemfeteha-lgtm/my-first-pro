@@ -1,0 +1,19 @@
+# بيانات العملاء والداتا الحقيقية لا تُرفع على الإنترنت
+center_management.db
+*.db-journal
+*.db-wal
+settings.json
+crash.log
+photos/
+backups/
+invoices/
+exports/
+
+# مخرجات التشغيل والبناء
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec.bak
+libs/
+*.zip

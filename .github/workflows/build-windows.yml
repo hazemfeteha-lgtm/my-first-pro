@@ -1,0 +1,49 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: ["khadamat-misr", "main"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build KhadamatMisr.exe
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Build EXE
+        run: pyinstaller --noconfirm --clean KhadamatMisr.spec
+
+      - name: Verify EXE exists
+        shell: pwsh
+        run: |
+          if (!(Test-Path "dist/KhadamatMisr.exe")) { throw "EXE was not created" }
+          Get-Item "dist/KhadamatMisr.exe" | Format-List Name, Length
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KhadamatMisr-windows-exe
+          path: dist/KhadamatMisr.exe
+          if-no-files-found: error
+
+      - name: Attach to release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/KhadamatMisr.exe
