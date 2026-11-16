@@ -1022,6 +1022,19 @@ _DICT.update({
     'عدد الموظفين المسجلين': 'Registered employees',
     'عدد السجلات': 'Records',
     'بالمدة أو بالجهة أو بالاسم': 'by period, entity or name',
+    'تسجيل سريع بساعة الجهاز:': 'Quick registration with the device clock:',
+    '⏱️ الوقت بيتاخد من ساعة الجهاز لحظة الضغط (والتاريخ المختار فوق)':
+        '⏱️ Time is taken from the device clock on click (for the selected date)',
+    '✅ حضور الآن': '✅ Check-in now',
+    '🚪 انصراف الآن': '🚪 Check-out now',
+    'اختر العامل': 'Pick an employee',
+    'اختر اسم العامل من القائمة أولًا، ثم اضغط الحضور أو الانصراف.':
+        'Pick the employee from the list first, then press check-in or check-out.',
+    'تاريخ مختلف': 'Different date',
+    'مسجل بالفعل': 'Already recorded',
+    'مفيش حضور مسجل': 'No check-in recorded',
+    'تم تسجيل الحضور': 'Check-in recorded',
+    'تم تسجيل الانصراف': 'Check-out recorded',
 })
 
 # Phrase fallback: used for composed strings (f-strings with data inside).

@@ -21,7 +21,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.2.0"
+APP_VERSION = "2.3.0"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -4618,7 +4618,18 @@ class CenterApp:
         self.add_field(form, "وقت الحضور (اكتبه يدويًا مثل 7:30)", self.c_in, 1, 2, 220)
         self.add_field(form, "وقت الانصراف (اكتبه يدويًا مثل 4:00 م)", self.c_out, 1, 1, 220)
         self.add_field(form, "ملاحظات", self.c_notes, 1, 0, 260)
-        bx = tk.Frame(form, bg=WHITE); bx.grid(row=2, column=0, columnspan=3, sticky="e", padx=14, pady=(0, 10))
+
+        # ---- تسجيل سريع بضغطة واحدة: الوقت يُؤخذ من ساعة الجهاز ----
+        quick = tk.Frame(form, bg=WHITE)
+        quick.grid(row=2, column=0, columnspan=3, sticky="e", padx=14, pady=(4, 0))
+        tk.Label(quick, text="تسجيل سريع بساعة الجهاز:", bg=WHITE, fg=MUTED,
+                 font=(FONT, 9, "bold")).pack(side="right", padx=(0, 8))
+        tk.Label(quick, text="⏱️ الوقت بيتاخد من ساعة الجهاز لحظة الضغط (والتاريخ المختار فوق)",
+                 bg=WHITE, fg=MUTED, font=(FONT, 9)).pack(side="right", padx=6)
+        self.btn(quick, "✅ حضور الآن", lambda: self.clock_now("in"), GREEN).pack(side="right", padx=4)
+        self.btn(quick, "🚪 انصراف الآن", lambda: self.clock_now("out"), ORANGE).pack(side="right", padx=4)
+
+        bx = tk.Frame(form, bg=WHITE); bx.grid(row=3, column=0, columnspan=3, sticky="e", padx=14, pady=(4, 10))
         self.btn(bx, "💾 حفظ الحضور والانصراف", self.save_clock, GREEN).pack(side="right", padx=4)
         self.btn(bx, "↺ المواعيد الرسمية للقسم", lambda: fill_default(True), BLUE).pack(side="right", padx=4)
         self.btn(bx, "حذف المحدد", self.delete_clock, RED).pack(side="right", padx=4)
@@ -4631,15 +4642,32 @@ class CenterApp:
             if force or not self.c_in.get(): self.c_in.set(fmt_time(s0))
             if force or not self.c_out.get(): self.c_out.set(fmt_time(s1))
 
+        def today_status(name):
+            if not name:
+                return ""
+            try:
+                with db() as con:
+                    r = con.execute("SELECT in_time, out_time FROM attendance WHERE employee=? AND att_date=?",
+                                    (name, date.today().isoformat())).fetchone()
+            except Exception:
+                return ""
+            if not r:
+                return "   |   النهاردة: مفيش تسجيل"
+            return f"   |   النهاردة: حضور {fmt_time(r[0]) or '—'} · انصراف {fmt_time(r[1]) or '—'}"
+
         def upd(*_):
             name = self.c_emp.get()
             dept = worker_dept(name) if name else ""
             if not dept:
-                info.config(text="الأمن: 7ص - 7م   |   الفنيين: 7:30ص - 4م   |   الخدمات: 7ص - 4م"); return
+                info.config(text="الأمن: 7ص - 7م   |   الفنيين: 7:30ص - 4م   |   الخدمات: 7ص - 4م" + today_status(name)); return
             s0, s1 = shift_of(dept)
-            info.config(text=f"قسم {DEPT_LABEL.get(dept, dept)}: الدوام من {fmt_time(s0)} إلى {fmt_time(s1)}")
+            info.config(text=f"قسم {DEPT_LABEL.get(dept, dept)}: الدوام من {fmt_time(s0)} إلى {fmt_time(s1)}"
+                             + today_status(name))
+
         def on_emp(*_):
             self.c_in.set(""); self.c_out.set(""); fill_default(); upd()
+
+        self._clock_refresh = upd
         self.c_emp.trace_add("write", on_emp); upd()
         self.c_tree = self.make_tree(tab, ("name", "dept", "date", "in", "out", "hrs", "late", "early", "notes"),
                                      ("اسم العامل", "القسم", "التاريخ", "الحضور", "الانصراف", "ساعات العمل",
@@ -4666,7 +4694,81 @@ class CenterApp:
             messagebox.showwarning("تنبيه", msg); return
         self.c_notes.set(""); self.c_in.set(""); self.c_out.set("")
         self.load_clock()
+        if hasattr(self, "_clock_refresh"):
+            self._clock_refresh()
         messagebox.showinfo("تم الحفظ", f"تم تسجيل حضور وانصراف «{name}».")
+
+    def clock_now(self, kind):
+        """تسجيل حضور/انصراف بضغطة واحدة: الوقت يُؤخذ من ساعة الجهاز لحظة الضغط."""
+        name = self.c_emp.get().strip()
+        if not name:
+            messagebox.showwarning("اختر العامل", "اختر اسم العامل من القائمة أولًا، ثم اضغط الحضور أو الانصراف.")
+            return
+        try:
+            iso = parse_date(self.c_date.get()).isoformat()
+        except ValueError:
+            messagebox.showerror("التاريخ", "راجع التاريخ (يوم/شهر/سنة).")
+            return
+        now_t = datetime.now().strftime("%H:%M")
+        if iso != date.today().isoformat():
+            if not messagebox.askyesno("تاريخ مختلف",
+                                       f"التاريخ المختار ({fmt_iso_date(iso)}) مش تاريخ النهاردة.\n"
+                                       f"هل تسجّل الوقت الحالي ({fmt_time(now_t)}) على هذا التاريخ؟"):
+                return
+        notes = self.c_notes.get().strip()
+        with db() as con:
+            r = con.execute("SELECT id, in_time, out_time FROM attendance WHERE employee=? AND att_date=?",
+                            (name, iso)).fetchone()
+
+        if kind == "in":
+            if r and r[1]:
+                messagebox.showwarning("مسجل بالفعل",
+                                       f"«{name}» مسجل حضور الساعة {fmt_time(r[1])} بتاريخ {fmt_iso_date(iso)}.\n"
+                                       "لو عايز تصحّح الوقت، عدّل السجل من الجدول أو استخدم الحفظ اليدوي.")
+                return
+            if r:
+                with db() as con:
+                    if notes:
+                        con.execute("UPDATE attendance SET in_time=?, notes=? WHERE id=?", (now_t, notes, r[0]))
+                    else:
+                        con.execute("UPDATE attendance SET in_time=? WHERE id=?", (now_t, r[0]))
+            else:
+                ok, msg = add_attendance(name, iso, now_t, "", notes)
+                if not ok:
+                    messagebox.showwarning("تنبيه", msg)
+                    return
+            self.c_in.set(fmt_time(now_t))
+            title = "تم تسجيل الحضور"
+            body = f"✅ حضور «{name}» الساعة {fmt_time(now_t)}\n{fmt_iso_date(iso)}"
+        else:
+            if not r or not r[1]:
+                messagebox.showwarning("مفيش حضور مسجل",
+                                       f"«{name}» مالوش حضور مسجل بتاريخ {fmt_iso_date(iso)}.\n"
+                                       "سجّل الحضور الأول (زر ✅ حضور الآن) وبعدها اضغط انصراف.")
+                return
+            if r[2]:
+                messagebox.showwarning("مسجل بالفعل",
+                                       f"«{name}» مسجل انصراف الساعة {fmt_time(r[2])} بتاريخ {fmt_iso_date(iso)}.")
+                return
+            if _mins(now_t) <= _mins(r[1]):
+                messagebox.showwarning("الوقت",
+                                       f"وقت الانصراف الحالي ({fmt_time(now_t)}) لازم يكون بعد وقت الحضور ({fmt_time(r[1])}).\n"
+                                       "لو الدوام ليلاً، استخدم الحفظ اليدوي للانصراف.")
+                return
+            with db() as con:
+                if notes:
+                    con.execute("UPDATE attendance SET out_time=?, notes=? WHERE id=?", (now_t, notes, r[0]))
+                else:
+                    con.execute("UPDATE attendance SET out_time=? WHERE id=?", (now_t, r[0]))
+            self.c_out.set(fmt_time(now_t))
+            title = "تم تسجيل الانصراف"
+            body = f"🚪 انصراف «{name}» الساعة {fmt_time(now_t)}\n{fmt_iso_date(iso)}"
+
+        self.c_notes.set("")
+        self.load_clock()
+        if hasattr(self, "_clock_refresh"):
+            self._clock_refresh()
+        messagebox.showinfo(title, body)
 
     def load_clock(self):
         with db() as con:
@@ -5034,7 +5136,7 @@ for _name, _lv, _pg in (
         ("edit_cell", "add", lambda self, *a: self.active_key),
         ("purchase_dialog", "add", "purchases"), ("attach_invoice", "edit", "purchases"),
         ("delete_purchase", "edit", "purchases"), ("edit_paid_by", "edit", "purchases"),
-        ("save_clock", "add", "attend"), ("delete_clock", "edit", "attend"),
+        ("save_clock", "add", "attend"), ("clock_now", "add", "attend"), ("delete_clock", "edit", "attend"),
         ("save_permit", "add", "attend"), ("delete_permit", "edit", "attend"),
         ("save_absence", "add", "attend"), ("delete_absence", "edit", "attend"),
         ("import_att_data", "add", "attend"), ("import_gov_att", "add", "gov"),
