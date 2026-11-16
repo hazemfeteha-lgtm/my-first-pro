@@ -1241,6 +1241,85 @@ def install():
         return _orig_heading(self, column, option, **kw)
     _ttk.Treeview.heading = heading
 
+    # tree cell values: shape for display, keep the raw text so data read back
+    # (inventory save, inline cell edit, entity keys) stays clean.
+    _orig_tv_insert = _ttk.Treeview.insert
+    _orig_tv_item = _ttk.Treeview.item
+    _orig_tv_set = _ttk.Treeview.set
+    _orig_tv_delete = _ttk.Treeview.delete
+
+    def _shape_cells(values):
+        return [_shape(v) if isinstance(v, str) else v for v in values]
+
+    def _raw_store(tree):
+        store = getattr(tree, "_khm_raw_cells", None)
+        if store is None:
+            store = {}
+            tree._khm_raw_cells = store
+        return store
+
+    def _col_index(tree, column):
+        if isinstance(column, str) and column.startswith("#") and column[1:].isdigit():
+            return int(column[1:]) - 1
+        cols = tree["columns"]
+        if isinstance(cols, str):
+            cols = [cols]
+        try:
+            return list(cols).index(column)
+        except (ValueError, TypeError):
+            return None
+
+    def tv_insert(self, parent, index, iid=None, **kw):
+        vals = kw.get("values")
+        raw = list(vals) if vals is not None else None
+        if vals is not None:
+            kw["values"] = _shape_cells(vals)
+        new_iid = _orig_tv_insert(self, parent, index, iid, **kw)
+        if raw is not None:
+            _raw_store(self)[new_iid] = raw
+        return new_iid
+
+    def tv_item(self, item, option=None, **kw):
+        store = _raw_store(self)
+        if kw.get("values") is not None:
+            raw = list(kw["values"])
+            store[item] = raw
+            kw["values"] = _shape_cells(raw)
+        res = _orig_tv_item(self, item, option, **kw)
+        if option == "values" and item in store:
+            return tuple(store[item])
+        if option is None and isinstance(res, dict) and item in store:
+            res = dict(res)
+            res["values"] = tuple(store[item])
+        return res
+
+    def tv_set(self, item, column=None, value=None):
+        store = _raw_store(self)
+        if value is None:
+            idx = _col_index(self, column)
+            res = _orig_tv_set(self, item, column)
+            if idx is not None and item in store and 0 <= idx < len(store[item]):
+                return store[item][idx]
+            return res
+        idx = _col_index(self, column)
+        if idx is not None:
+            row = store.setdefault(item, [])
+            while len(row) <= idx:
+                row.append("")
+            row[idx] = value
+        return _orig_tv_set(self, item, column, _shape(value) if isinstance(value, str) else value)
+
+    def tv_delete(self, *items):
+        store = _raw_store(self)
+        for it in items:
+            store.pop(it, None)
+        return _orig_tv_delete(self, *items)
+
+    _ttk.Treeview.insert = tv_insert
+    _ttk.Treeview.item = tv_item
+    _ttk.Treeview.set = tv_set
+    _ttk.Treeview.delete = tv_delete
+
     _orig_nb_add = _ttk.Notebook.add
 
     def nb_add(self, child, **kw):
