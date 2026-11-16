@@ -21,7 +21,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.2.0"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -36,17 +36,51 @@ MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو",
 FONT = "Tahoma"
 EMOJI_FONT = "Segoe UI Emoji"
 SETTINGS_PATH = os.path.join(BASE, "settings.json")
+# اللوحة الأساسية للوضع النهاري (أزرق مؤسسي) — باقي اللوحات تُبنى عليها بتغيير الألوان الرئيسية
+_LIGHT = dict(NAVY="#0b1d3a", NAVY_2="#13315c", BLUE="#2a7fff", GOLD="#f5b82e", BG="#eef3fb", WHITE="#ffffff",
+              TEXT="#14233b", MUTED="#6a7d99", LINE="#dbe5f2", RED="#e5484d", GREEN="#12b886", ORANGE="#ff8a3d",
+              PURPLE="#7c5cff", TEAL="#14b8a6", CYAN="#06b6d4", AMBER="#f59e0b", PINK="#ec4899",
+              ODD="#f5f8fe", SOFT="#eaf0fa", SEL="#cfe0ff", INK="#0b1d3a", PRIMARY="#13315c",
+              H1="#0b1d3a", H2="#0f6a86", ENTRY="#ffffff")
+
 THEMES = {
-    "light": dict(NAVY="#0b1d3a", NAVY_2="#13315c", BLUE="#2a7fff", GOLD="#f5b82e", BG="#eef3fb", WHITE="#ffffff",
-                  TEXT="#14233b", MUTED="#6a7d99", LINE="#dbe5f2", RED="#e5484d", GREEN="#12b886", ORANGE="#ff8a3d",
-                  PURPLE="#7c5cff", TEAL="#14b8a6", CYAN="#06b6d4", AMBER="#f59e0b", PINK="#ec4899",
-                  ODD="#f5f8fe", SOFT="#eaf0fa", SEL="#cfe0ff", INK="#0b1d3a", PRIMARY="#13315c",
-                  H1="#0b1d3a", H2="#0f6a86", ENTRY="#ffffff"),
+    "light": dict(_LIGHT),
+    "gov": dict(_LIGHT, NAVY="#2f2a22", NAVY_2="#3e352a", BLUE="#8a6d3b", GOLD="#c9a227", BG="#f6f2e9",
+                TEXT="#332f28", MUTED="#7d7364", LINE="#e3dccb", RED="#b23a3a", GREEN="#3f7d4e",
+                ORANGE="#c47a2c", PURPLE="#6b5b95", TEAL="#4f8a8b", CYAN="#2f7f8f", AMBER="#c9971f",
+                PINK="#b05a7a", ODD="#faf6ed", SOFT="#efe8d8", SEL="#e6d9b8", INK="#2f2a22",
+                PRIMARY="#4a3f30", H1="#3a3326", H2="#6b5b3a", WHITE="#fffdf7", ENTRY="#fffdf7"),
+    "emerald": dict(_LIGHT, NAVY="#0c2f2a", NAVY_2="#11443c", BLUE="#1e8e6f", GOLD="#d9a92b", BG="#eef7f2",
+                    TEXT="#16322c", MUTED="#63807a", LINE="#d5e8df", PRIMARY="#11443c", H1="#0c2f2a",
+                    H2="#1d6f5c", ODD="#f3faf6", SOFT="#e2f1e9", SEL="#c6e6d6", INK="#0c2f2a"),
+    "royal": dict(_LIGHT, NAVY="#1b1f4b", NAVY_2="#262b66", BLUE="#4a5ae8", GOLD="#e8b64c", BG="#f0f1fb",
+                  TEXT="#1d2140", MUTED="#6d7396", LINE="#dcdef2", PRIMARY="#262b66", H1="#1b1f4b",
+                  H2="#3a3f8f", ODD="#f6f7fd", SOFT="#e7e9fa", SEL="#d3d7ff", INK="#1b1f4b"),
+    "teal": dict(_LIGHT, NAVY="#083344", NAVY_2="#0d4a5e", BLUE="#0e8ba6", GOLD="#e6b84a", BG="#edf6f9",
+                 TEXT="#123641", MUTED="#5f8290", LINE="#d3e5eb", PRIMARY="#0d4a5e", H1="#083344",
+                 H2="#126c84", ODD="#f4fbfd", SOFT="#e0eff4", SEL="#c6e6ee", INK="#083344"),
+    "slate": dict(_LIGHT, NAVY="#1f2933", NAVY_2="#2b3742", BLUE="#3f7cac", GOLD="#d4a72c", BG="#f1f4f7",
+                  TEXT="#1f2933", MUTED="#6b7785", LINE="#dce3ea", PRIMARY="#2b3742", H1="#1f2933",
+                  H2="#3c5a75", ODD="#f6f8fa", SOFT="#e6ebf0", SEL="#d2e2ef", INK="#1f2933"),
+    "warm": dict(_LIGHT, NAVY="#3b2f2f", NAVY_2="#4a3b39", BLUE="#a05a2c", GOLD="#d9a441", BG="#faf4ee",
+                 TEXT="#3a2f2c", MUTED="#86736b", LINE="#eadfd5", PRIMARY="#4a3b39", H1="#3b2f2f",
+                 H2="#8a5a3a", ODD="#fdf8f3", SOFT="#f3e9df", SEL="#eeddc9", INK="#3b2f2f"),
     "dark": dict(NAVY="#050a16", NAVY_2="#0b1430", BLUE="#4c8dff", GOLD="#ffc83d", BG="#0a1020", WHITE="#121a2e",
                  TEXT="#e8eefc", MUTED="#8aa0c8", LINE="#223052", RED="#ff6369", GREEN="#2ecc9a", ORANGE="#ff9f59",
                  PURPLE="#9d85ff", TEAL="#2dd4bf", CYAN="#22d3ee", AMBER="#fbbf24", PINK="#f472b6",
                  ODD="#16203a", SOFT="#1a2542", SEL="#25407a", INK="#ffffff", PRIMARY="#2f5bd8",
                  H1="#050a16", H2="#0b4a63", ENTRY="#0d1528"),
+}
+
+THEME_LABELS = {"light": "أزرق مؤسسي", "gov": "حكومي كلاسيكي", "emerald": "أخضر مؤسسي",
+                "royal": "أزرق ملكي", "teal": "تركوازي بحري", "slate": "رمادي مكتبي",
+                "warm": "بيج دافئ", "dark": "الوضع الليلي"}
+
+# أشكال الواجهة: كثافة العرض وحجم الأزرار (تُختار من نافذة الألوان والمظهر)
+UI_STYLES = {
+    "comfort": {"label": "مريح", "ROW_H": 32, "BTN_PADX": 18, "BTN_PADY": 8, "NAV_PADY": 1},
+    "compact": {"label": "مضغوط", "ROW_H": 26, "BTN_PADX": 12, "BTN_PADY": 5, "NAV_PADY": 0},
+    "classic": {"label": "كلاسيكي", "ROW_H": 36, "BTN_PADX": 22, "BTN_PADY": 10, "NAV_PADY": 2},
 }
 
 
@@ -73,7 +107,16 @@ def apply_theme(name):
     globals()["THEME"] = name
 
 
+def apply_style(name):
+    """يغيّر شكل الواجهة: ارتفاع صفوف الجداول وحشو الأزرار وتباعد القائمة."""
+    name = name if name in UI_STYLES else "comfort"
+    st = UI_STYLES[name]
+    globals().update({"STYLE": name, "ROW_H": st["ROW_H"], "BTN_PADX": st["BTN_PADX"],
+                      "BTN_PADY": st["BTN_PADY"], "NAV_PADY": st["NAV_PADY"]})
+
+
 apply_theme(load_settings().get("theme", "light"))
+apply_style(load_settings().get("style", "comfort"))
 
 # ---- اللغة (عربي / إنجليزي): طبقة الترجمة تُثبَّت قبل إنشاء أي واجهة ----
 import i18n
@@ -128,7 +171,7 @@ DEPT_START = {"خدمات": "07:00", "أمن": "07:00", "صيانة": "07:30"}  
 DEPT_SHIFT = {"أمن": ("07:00", "19:00"), "صيانة": ("07:30", "16:00"), "خدمات": ("07:00", "16:00")}
 DEPT_LABEL = {"أمن": "الأمن", "صيانة": "الفنيين", "خدمات": "الخدمات"}
 ABSENCE_KINDS = ["غياب بدون إذن", "غياب بعذر", "إجازة مرضية", "إجازة اعتيادية", "تأخير"]
-SUMMARY_ONLY = ("ملخص العاملين", "ملخص الحضور والغياب")
+SUMMARY_ONLY = ("ملخص العاملين", "ملخص الحضور والغياب", "ملخص حضور الموظفين", "ملخص الجهات")
 NOTE_KINDS = ["ملاحظة", "خطأ", "تنبيه شفهي", "إشادة"]
 SEVERITIES = ["بسيطة", "متوسطة", "جسيمة"]
 INV_NAMES = {"cleaning": "جرد النظافة", "paper": "الجرد الورقي", "toner": "جرد الأحبار"}
@@ -999,6 +1042,8 @@ def period_counts(start, end):
         res["إذونات الخروج"] = one("SELECT COUNT(*) FROM permits WHERE permit_date BETWEEN ? AND ?", start, end)
         res["الحضور والانصراف"] = one("SELECT COUNT(*) FROM attendance WHERE att_date BETWEEN ? AND ?", start, end)
         res["الغياب والتأخير"] = one("SELECT COUNT(*) FROM absences WHERE absence_date BETWEEN ? AND ?", start, end)
+        res["حضور موظفي الجهات"] = one("SELECT COUNT(*) FROM gov_attendance WHERE att_date BETWEEN ? AND ?", start, end)
+        res["قاعدة موظفي الجهات (الإجمالي)"] = one("SELECT COUNT(*) FROM gov_staff")
         res["قاعدة العاملين (الإجمالي)"] = one("SELECT COUNT(*) FROM employees")
     return res
 
@@ -1163,7 +1208,81 @@ def report_sections(kind, start, end):
                 [(n, d, j, st, fmt_iso_date(sd), fmt_iso_date(ed), nid, ph, fmt_iso_date(bd), ad, nt)
                  for n, d, j, st, sd, ed, nid, ph, bd, ad, nt in rows],
                 f"تاريخ الاستخراج: {today_text()}")
+        if kind in ("all", "govatt"):
+            S.extend(gov_att_sections(start, end))
+        if kind in ("all", "govstaff"):
+            rows = con.execute("""SELECT entity, name, job_title, phone, national_id, status, notes
+                FROM gov_staff ORDER BY entity, (status=?), name""", (STATUS_OFF,)).fetchall()
+            add("قاعدة موظفي الجهات", "قاعدة بيانات موظفي الجهات",
+                ["الجهة", "اسم الموظف", "الوظيفة", "الهاتف", "الرقم القومي", "الحالة", "ملاحظات"],
+                [24, 26, 20, 16, 20, 12, 32],
+                [(e, n, j or "", p or "", nid or "", st, nt or "") for e, n, j, p, nid, st, nt in rows],
+                f"تاريخ الاستخراج: {today_text()}")
     return S
+
+
+def gov_att_sections(start, end, entity="", person=""):
+    """أقسام تقرير حضور موظفي الجهات: التفاصيل + ملخص بالموظف + ملخص بالجهة.
+
+    entity / person فارغان = كل الجهات / كل الموظفين. مشتركة بين الطباعة وExcel.
+    """
+    period = f"الفترة: من {fmt_iso_date(start)} إلى {fmt_iso_date(end)}   |   تاريخ الاستخراج: {today_text()}"
+    if entity:
+        period += f"   |   الجهة: {entity}"
+    if person:
+        period += f"   |   الموظف: {person}"
+    sql = ("SELECT entity, person, att_date, in_time, out_time, notes FROM gov_attendance "
+           "WHERE att_date BETWEEN ? AND ?")
+    args = [start, end]
+    if entity:
+        sql += " AND entity=?"
+        args.append(entity)
+    if person:
+        sql += " AND person=?"
+        args.append(person)
+    with db() as con:
+        rows = con.execute(sql + " ORDER BY entity, att_date, person", args).fetchall()
+
+    details, by_emp, by_ent = [], {}, {}
+    for ent, nm, d, tin, tout, nt in rows:
+        mins = _mins(tout) - _mins(tin) if tin and tout else None
+        details.append((ent, nm, fmt_iso_date(d), fmt_time(tin) or "-", fmt_time(tout) or "-",
+                        fmt_hours(mins) if mins is not None else "-", nt or ""))
+        x = by_emp.setdefault((ent, nm), {"days": 0, "closed": 0, "open": 0, "mins": 0})
+        if tin or tout:
+            x["days"] += 1
+        if mins is not None:
+            x["closed"] += 1
+            x["mins"] += mins
+        elif tin:
+            x["open"] += 1
+        g = by_ent.setdefault(ent, {"staff": set(), "rec": 0, "mins": 0})
+        g["rec"] += 1
+        if tin or tout:
+            g["staff"].add(nm)
+        if mins is not None:
+            g["mins"] += mins
+
+    emp_rows = [(ent, nm, v["days"], v["closed"], v["open"], fmt_hours(v["mins"]),
+                 fmt_hours(round(v["mins"] / v["closed"])) if v["closed"] else "-")
+                for (ent, nm), v in by_emp.items()]
+    emp_rows.sort(key=lambda r: (r[0], r[1]))
+    ent_rows = [(ent, len(v["staff"]), v["rec"], fmt_hours(v["mins"])) for ent, v in by_ent.items()]
+    ent_rows.sort(key=lambda r: r[0])
+
+    return [
+        {"name": "حضور موظفي الجهات", "title": "تفاصيل حضور وانصراف موظفي الجهات",
+         "headers": ["الجهة", "اسم الموظف", "التاريخ", "الدخول", "الخروج", "ساعات العمل", "ملاحظات"],
+         "widths": [22, 26, 16, 12, 12, 14, 34], "rows": details, "period": period},
+        {"name": "ملخص حضور الموظفين", "title": "ملخص حضور كل موظف",
+         "headers": ["الجهة", "اسم الموظف", "أيام مسجلة", "أيام مكتملة", "أيام بدون انصراف",
+                     "إجمالي الساعات", "متوسط الساعات/يوم"],
+         "widths": [22, 26, 12, 12, 16, 14, 18], "rows": emp_rows, "period": period},
+        {"name": "ملخص الجهات", "title": "ملخص الحضور حسب الجهة",
+         "headers": ["الجهة", "عدد الموظفين المسجلين", "عدد السجلات", "إجمالي الساعات"],
+         "widths": [30, 20, 16, 18], "rows": ent_rows, "period": period},
+    ]
+
 
 
 def build_report(path, kind, start, end):
@@ -1808,7 +1927,7 @@ class CenterApp:
             st.theme_use("clam")
         except tk.TclError:
             pass
-        st.configure("Treeview", rowheight=32, font=(FONT, 10), background=WHITE,
+        st.configure("Treeview", rowheight=ROW_H, font=(FONT, 10), background=WHITE,
                      fieldbackground=WHITE, foreground=TEXT, borderwidth=0)
         st.configure("Treeview.Heading", font=(FONT, 10, "bold"), background=NAVY_2,
                      foreground="white", padding=8, relief="flat")
@@ -1859,7 +1978,7 @@ class CenterApp:
         title_id = hdr.create_text(0, 0, anchor="center", text=APP_NAME, fill="white", font=(FONT, 26, "bold"))
         sub_id = hdr.create_text(0, 0, anchor="center", text=f"فرع {BRANCH}", fill="#ffd978", font=(FONT, 13, "bold"))
         self.clock_id = hdr.create_text(0, 0, anchor="e" if en else "w", text="", fill="#e3efff", font=(FONT, 11, "bold"))
-        self.theme_btn = tk.Button(hdr, text="🌙  الوضع الليلي" if THEME == "light" else "☀️  الوضع النهاري",
+        self.theme_btn = tk.Button(hdr, text="🌙  الوضع الليلي" if THEME != "dark" else "☀️  الوضع النهاري",
                                    command=self.toggle_theme, bg=GOLD, fg=NAVY, activebackground="white",
                                    relief="flat", bd=0, font=(FONT, 9, "bold"), padx=12, pady=4, cursor="hand2")
         btn_win = hdr.create_window(0, 0, anchor="e" if en else "w", window=self.theme_btn)
@@ -1873,6 +1992,7 @@ class CenterApp:
                                       relief="flat", bd=0, font=(FONT, 9, "bold"), padx=12, pady=4, cursor="hand2")
         um = tk.Menu(self.user_btn, tearoff=0, font=(FONT, 10)); self.user_btn.config(menu=um)
         um.add_command(label="🔑  تغيير كلمة المرور", command=self.change_password_dialog)
+        um.add_command(label="🎨  الألوان والمظهر", command=self.appearance_dialog)
         if self.user["is_admin"]:
             um.add_command(label="👥  المستخدمون والصلاحيات", command=self.users_dialog)
         um.add_separator()
@@ -1921,11 +2041,14 @@ class CenterApp:
             b = tk.Button(self.sidebar, command=lambda k=key: self.go(k),
                           anchor="e", bg=NAVY_2, fg="white", activebackground=BLUE,
                           activeforeground="white", relief="flat", bd=0,
-                          font=(FONT, 11, "bold"), padx=18, pady=2 if ic else 4, cursor="hand2", **look)
+                          font=(FONT, 11, "bold"), padx=18, pady=NAV_PADY if ic else NAV_PADY + 2, cursor="hand2", **look)
             b.pack(fill="x", padx=10, pady=1)
             b.bind("<Enter>", lambda e, k=key: self.nav_hover(k, True))
             b.bind("<Leave>", lambda e, k=key: self.nav_hover(k, False))
             self.nav_buttons[key] = b
+        tk.Button(self.sidebar, text="الألوان والمظهر   🎨", command=self.appearance_dialog, anchor="e",
+                  bg=NAVY_2, fg="#ffe0a3", activebackground=BLUE, activeforeground="white", relief="flat", bd=0,
+                  font=(FONT, 10, "bold"), padx=18, pady=8, cursor="hand2").pack(side="bottom", fill="x", padx=10, pady=(0, 6))
         if self.user["is_admin"]:
             tk.Button(self.sidebar, text="نسخة احتياطية   💾", command=self.manual_backup, anchor="e",
                       bg=NAVY, fg=GOLD, activebackground=BLUE, activeforeground="white", relief="flat", bd=0,
@@ -1937,10 +2060,8 @@ class CenterApp:
         self.content = tk.Frame(shell, bg=BG)
         self.content.pack(side="left", fill="both", expand=True)
 
-    def toggle_theme(self):
-        new = "dark" if THEME == "light" else "light"
-        apply_theme(new)
-        cfg = load_settings(); cfg["theme"] = new; save_settings(cfg)
+    def rebuild_ui(self):
+        """يعيد بناء الواجهة بعد تغيير الألوان أو الشكل أو اللغة مع البقاء في نفس الصفحة."""
         cur = self.active_key or "home"
         for w in self.root.winfo_children():
             w.destroy()
@@ -1948,18 +2069,77 @@ class CenterApp:
         self.root.configure(bg=BG)
         self.setup_style(); self.build_shell(); self.go(cur)
 
+    def toggle_theme(self):
+        new = "dark" if THEME != "dark" else "light"
+        apply_theme(new)
+        cfg = load_settings(); cfg["theme"] = new; save_settings(cfg)
+        self.rebuild_ui()
+
+    def appearance_dialog(self):
+        """اختيار ألوان الواجهة (7 لوحات نهارية + الليلي) وشكل العرض (مريح / مضغوط / كلاسيكي)."""
+        win = self._dialog("الألوان والمظهر", "800x680")
+        win.minsize(720, 580)
+        tk.Label(win, text="🎨 الألوان والمظهر", bg=BG, fg=INK, font=(FONT, 17, "bold")).pack(anchor="e", padx=22, pady=(14, 2))
+        tk.Label(win, text="اختر ألوان الواجهة وشكل العرض — التغيير يُطبَّق ويُحفظ فورًا، والوضع النهاري هو الأساس للعمل المكتبي.",
+                 bg=BG, fg=MUTED, font=(FONT, 9)).pack(anchor="e", padx=24)
+
+        body = tk.Frame(win, bg=BG); body.pack(fill="both", expand=True, padx=18, pady=8)
+        tk.Label(body, text="ألوان الواجهة (الوضع النهاري + الليلي)", bg=BG, fg=INK,
+                 font=(FONT, 12, "bold"), anchor="e").pack(fill="x", pady=(6, 2))
+        grid = tk.Frame(body, bg=BG); grid.pack(fill="x")
+        order = [k for k in THEMES if k != "dark"] + ["dark"]
+        for i, key in enumerate(order):
+            pal = THEMES[key]
+            on = THEME == key
+            card = tk.Frame(grid, bg=WHITE, highlightbackground=pal["BLUE"] if on else LINE,
+                            highlightthickness=3 if on else 1)
+            r, c = divmod(i, 4)
+            card.grid(row=r, column=3 - c, padx=6, pady=6, sticky="nsew")
+            grid.grid_columnconfigure(c, weight=1, uniform="pal")
+            sw = tk.Canvas(card, width=150, height=44, highlightthickness=0, bd=0, bg=WHITE)
+            sw.pack(fill="x", padx=6, pady=(6, 2))
+            cols = [pal["NAVY_2"], pal["BLUE"], pal["GOLD"], pal["BG"], pal["WHITE"]]
+            for j, col in enumerate(cols):
+                sw.create_rectangle(j * 30, 0, (j + 1) * 30, 44, outline="", fill=col)
+            tk.Label(card, text=THEME_LABELS.get(key, key), bg=WHITE, fg=TEXT,
+                     font=(FONT, 10, "bold")).pack(pady=(2, 0))
+            tk.Button(card, text="✔ مختار" if on else "تطبيق", command=lambda k=key: self.apply_appearance(theme=k),
+                      bg=GREEN if on else pal["BLUE"], fg="white", activebackground=GOLD, activeforeground=INK,
+                      relief="flat", bd=0, font=(FONT, 9, "bold"), padx=10, pady=4,
+                      cursor="hand2").pack(pady=(2, 6))
+
+        tk.Label(body, text="شكل الواجهة", bg=BG, fg=INK, font=(FONT, 12, "bold"),
+                 anchor="e").pack(fill="x", pady=(10, 2))
+        srow = tk.Frame(body, bg=WHITE, highlightbackground=LINE, highlightthickness=1)
+        srow.pack(fill="x", padx=4)
+        for key, st in UI_STYLES.items():
+            on = STYLE == key
+            tk.Button(srow, text=f"{st['label']}\nصفوف {st['ROW_H']}px · أزرار {st['BTN_PADX']}×{st['BTN_PADY']}",
+                      command=lambda k=key: self.apply_appearance(style=k),
+                      bg=GREEN if on else SOFT, fg="white" if on else TEXT, activebackground=BLUE,
+                      activeforeground="white", relief="flat", bd=0, font=(FONT, 9, "bold"),
+                      padx=14, pady=6, cursor="hand2").pack(side="right", expand=True, fill="x", padx=5, pady=8)
+        tk.Label(body, text="ملاحظة: كل الألوان فاتحة ومناسبة للعمل المكتبي، والوضع الليلي يبقى متاحًا من زر القمر أعلى الشاشة.",
+                 bg=BG, fg=MUTED, font=(FONT, 9)).pack(anchor="e", pady=(8, 0))
+        self.btn(win, "إغلاق", win.destroy, MUTED).pack(pady=10)
+
+    def apply_appearance(self, theme=None, style=None):
+        """يطبّق اللون/الشكل المختار، يحفظه في الإعدادات، ويعيد بناء الواجهة فورًا."""
+        cfg = load_settings()
+        if theme:
+            apply_theme(theme); cfg["theme"] = theme
+        if style:
+            apply_style(style); cfg["style"] = style
+        save_settings(cfg)
+        self.rebuild_ui()
+
     def toggle_lang(self):
         """تبديل لغة الواجهة بين العربية والإنجليزية وإعادة بناء الشاشة."""
         new = "ar" if i18n.is_en() else "en"
         i18n.set_lang(new)
         cfg = load_settings(); cfg["lang"] = new; save_settings(cfg)
-        cur = self.active_key or "home"
         self.root.title(T(f"{APP_NAME} - نظام إدارة المركز - {BRANCH}"))
-        for w in self.root.winfo_children():
-            w.destroy()
-        self.nav_buttons = {}
-        self.root.configure(bg=BG)
-        self.setup_style(); self.build_shell(); self.go(cur)
+        self.rebuild_ui()
 
     def restore_backup(self):
         """إدراج (استرجاع) نسخة احتياطية: تستبدل بيانات البرنامج الحالية ببيانات ملف .db مختار."""
@@ -2294,7 +2474,7 @@ class CenterApp:
     def btn(self, parent, text, cmd, color=None, **kw):
         return tk.Button(parent, text=text, command=cmd, bg=color or PRIMARY, fg="white", activebackground=BLUE,
                          activeforeground="white", relief="flat", font=(FONT, 10, "bold"),
-                         padx=18, pady=8, cursor="hand2", **kw)
+                         padx=BTN_PADX, pady=BTN_PADY, cursor="hand2", **kw)
 
     def add_field(self, parent, label, var, row, col, width):
         box = tk.Frame(parent, bg=WHITE)
@@ -3790,10 +3970,12 @@ class CenterApp:
         opts = [("all", "كل السجلات"), ("visits", "الزيارات"), ("maintenance", "الصيانة"),
                 ("cleaning", "جرد النظافة"), ("paper", "الجرد الورقي"), ("toner", "جرد الأحبار"),
                 ("stockin", "الوارد للمخازن"), ("employees", "ملاحظات وأخطاء العاملين"), ("permits", "إذونات الخروج"),
-                ("attendance", "الحضور والانصراف"), ("absences", "الغياب والتأخير"), ("workers", "قاعدة العاملين")]
+                ("attendance", "الحضور والانصراف"), ("absences", "الغياب والتأخير"), ("govatt", "حضور موظفي الجهات"),
+                ("govstaff", "قاعدة موظفي الجهات"), ("workers", "قاعدة العاملين")]
         need_pg = {"visits": ("visits",), "maintenance": ("maintenance",), "cleaning": ("cleaning",), "paper": ("paper",),
                    "toner": ("toner",), "stockin": ("cleaning", "paper", "toner"), "employees": ("employees",),
-                   "permits": ("attend",), "attendance": ("attend",), "absences": ("attend",), "workers": ("workers",)}
+                   "permits": ("attend",), "attendance": ("attend",), "absences": ("attend",),
+                   "govatt": ("gov",), "govstaff": ("govstaff",), "workers": ("workers",)}
         opts = [o for o in opts if (o[0] == "all" and self.all_data_visible())
                 or (o[0] != "all" and any(self.can(pg, "view") for pg in need_pg.get(o[0], ())))]
         self.report_type.set(opts[0][0] if opts else "none")
@@ -3814,6 +3996,8 @@ class CenterApp:
                      "• الجرد: الصنف، الكمية، الرصيد السابق، الوارد، والاستهلاك (السابق + الوارد - الجرد الجديد). والوارد للمخازن له تقرير مستقل.",
                      "• ملاحظات وأخطاء العاملين: تفاصيل كل بيان + ورقة ملخص بعدد ملاحظات وأخطاء كل عامل.",
                      "• إذونات الخروج والغياب والتأخير: تفاصيل كل بيان + ملخص بعدد إذونات وغياب وتأخير كل عامل.",
+                     "• حضور موظفي الجهات: تفاصيل كل دخول وانصراف + ملخص لكل موظف + ملخص لكل جهة (للفترة المحددة).",
+                     "• قاعدة موظفي الجهات: كل موظفي الجهات الثماني بالوظيفة والهاتف والرقم القومي والحالة.",
                      "• كل تقرير مكتوب فيه: خدمات مصر - فرع الإسكندرية.",
                      "• 🖨️ الطباعة: تفتح صفحة منسقة بلوجو خدمات مصر وخانات التوقيع وتبدأ نافذة الطباعة (ويمكن حفظها PDF).",
                      "• اضغط «معاينة الأعداد» لترى عدد السجلات في كل قسم قبل الاستخراج."]:
@@ -3980,6 +4164,7 @@ class CenterApp:
         for val, label in (("today", "اليوم فقط"), ("all", "كل السجلات")):
             ttk.Radiobutton(top, text=label, value=val, variable=self.g_view, command=self.gov_reload).pack(side="left", padx=6)
         bx = tk.Frame(bar, bg=WHITE); bx.pack(fill="x", padx=12, pady=(2, 10))
+        self.btn(bx, "🖨️ طباعة تقارير", self.gov_report_dialog, AMBER).pack(side="right", padx=(0, 4))
         self.btn(bx, "👥 اختيار موظف وتسجيل", self.gov_picker, GREEN).pack(side="right", padx=4)
         self.btn(bx, "✏️ تعديل المحدد", lambda: self.edit_record("gov_attendance", self.g_tree), BLUE).pack(side="right", padx=4)
         self.btn(bx, "حذف المحدد", lambda: self.delete_selected("gov_attendance", self.g_tree), RED).pack(side="right", padx=4)
@@ -4016,6 +4201,115 @@ class CenterApp:
             w = _mins(o) - _mins(i) if i and o else None
             self.g_tree.insert("", "end", iid=str(rid), tags=("odd",) if n % 2 else (),
                                values=(pn, fmt_iso_date(d), fmt_time(i) or "-", fmt_time(o) or "-", fmt_hours(w), nt or "-"))
+
+    def _gov_report_names(self, entity=""):
+        """أسماء موظفي الجهات (من قاعدة الموظفين ومن سجلات الحضور) لاختيار موظف في تقرير الحضور."""
+        sql1 = "SELECT DISTINCT person FROM gov_attendance WHERE person <> ''"
+        sql2 = "SELECT DISTINCT name FROM gov_staff WHERE name <> ''"
+        args = []
+        if entity and not entity.startswith("("):
+            sql1 += " AND entity=?"
+            sql2 += " AND entity=?"
+            args = [entity]
+        with db() as con:
+            names = {r[0] for r in con.execute(sql1, args) if r[0]}
+            names |= {r[0] for r in con.execute(sql2, args) if r[0]}
+        return sorted(names)
+
+    def gov_report_dialog(self):
+        """تقرير حضور وانصراف موظفي الجهات: بالمدة / بالجهة / بالاسم — طباعة أو Excel."""
+        win = self._dialog("طباعة تقارير حضور الجهات", "900x700")
+        win.minsize(780, 600)
+        tk.Label(win, text="🖨️ تقارير حضور وانصراف موظفي الجهات", bg=BG, fg=INK,
+                 font=(FONT, 16, "bold")).pack(anchor="e", padx=22, pady=(14, 2))
+        tk.Label(win, text="حدد المدة، واختر جهة أو موظفًا (أو اترك الكل)، ثم اطبع أو استخرج Excel.",
+                 bg=BG, fg=MUTED, font=(FONT, 9)).pack(anchor="e", padx=24)
+        form = self.panel(win)
+        form.pack(fill="x", padx=16, pady=10)
+        f_var = tk.StringVar(value=earliest_record_date("gov_attendance").strftime("%d/%m/%Y"))
+        t_var = tk.StringVar(value=today_text())
+        self.add_date(form, "من تاريخ", f_var, 0, 2)
+        self.add_date(form, "إلى تاريخ", t_var, 0, 1)
+        quick = tk.Frame(form, bg=WHITE)
+        quick.grid(row=0, column=0, padx=10, sticky="e")
+        for label, a, b in [("هذا الشهر", date.today().replace(day=1).strftime("%d/%m/%Y"), today_text()),
+                            ("هذه السنة", date.today().replace(month=1, day=1).strftime("%d/%m/%Y"), today_text())]:
+            self.btn(quick, label, lambda a=a, b=b: (f_var.set(a), t_var.set(b)), BLUE).pack(side="right", padx=3)
+        ent_var = tk.StringVar(value="(كل الجهات)")
+        per_var = tk.StringVar(value="(كل الموظفين)")
+        ent_cb = self.add_combo(form, "الجهة", ent_var, ["(كل الجهات)"] + GOV_ENTITIES, 1, 2)
+        per_cb = self.add_combo(form, "الموظف", per_var, ["(كل الموظفين)"] + self._gov_report_names(), 1, 1)
+        tk.Label(form, text="اترك «كل الجهات» و«كل الموظفين» لعمل تقرير شامل.", bg=WHITE, fg=MUTED,
+                 font=(FONT, 9)).grid(row=1, column=0, padx=12, sticky="e")
+
+        def refresh_names(*_):
+            vals = ["(كل الموظفين)"] + self._gov_report_names(ent_var.get())
+            per_cb.configure(values=vals)
+            if per_var.get() not in vals:
+                per_var.set(vals[0])
+        ent_cb.bind("<<ComboboxSelected>>", refresh_names)
+
+        kind = tk.StringVar(value="all")
+        kb = tk.Frame(form, bg=WHITE)
+        kb.grid(row=2, column=0, columnspan=3, sticky="e", padx=12, pady=(0, 10))
+        tk.Label(kb, text="محتوى التقرير:", bg=WHITE, fg=TEXT, font=(FONT, 10, "bold")).pack(side="right", padx=6)
+        for val, label in [("details", "تفاصيل الحضور"), ("summary", "ملخص بالموظف والجهة"), ("all", "التفاصيل + الملخص")]:
+            ttk.Radiobutton(kb, text=label, value=val, variable=kind).pack(side="right", padx=7)
+
+        bb = tk.Frame(win, bg=BG)
+        bb.pack(side="bottom", fill="x", pady=12)
+        tk.Label(win, text="التقرير يطبع على ورق A4 منسق بلوجو خدمات مصر وخانات التوقيع، ويمكن حفظه PDF.",
+                 bg=BG, fg=MUTED, font=(FONT, 9)).pack(side="bottom", pady=(0, 4))
+
+        def collect():
+            try:
+                s = parse_date(f_var.get()).isoformat()
+                e = parse_date(t_var.get()).isoformat()
+                if e < s:
+                    raise ValueError
+            except ValueError:
+                messagebox.showerror("التاريخ", "راجع تاريخ البداية والنهاية (يوم/شهر/سنة).", parent=win)
+                return None
+            ent = ent_var.get()
+            ent = "" if ent.startswith("(") else ent
+            per = per_var.get()
+            per = "" if per.startswith("(") else per
+            secs = gov_att_sections(s, e, ent, per)
+            if kind.get() == "details":
+                secs = secs[:1]
+            elif kind.get() == "summary":
+                secs = secs[1:]
+            if not any(x["rows"] for x in secs):
+                messagebox.showinfo("لا توجد بيانات", "لا توجد سجلات حضور في المدة/الاختيار المحدد.", parent=win)
+                return None
+            return secs, ent, per
+
+        def do_print():
+            got = collect()
+            if not got:
+                return
+            secs, ent, per = got
+            win.destroy()
+            try:
+                open_html(sections_html("تقرير حضور وانصراف موظفي الجهات", secs), "gov_report")
+            except Exception as ex:
+                messagebox.showerror("خطأ", f"تعذر تجهيز الطباعة:\n{ex}")
+
+        def do_excel():
+            got = collect()
+            if not got:
+                return
+            secs, ent, per = got
+            tag = ent or "كل_الجهات"
+            if per:
+                tag = f"{per}_{tag}"
+            name = f"حضور_الجهات_{tag}_{date.today():%Y-%m-%d}.xlsx".replace(" ", "_")
+            win.destroy()
+            self.export_sections_excel(secs, name, "تقرير حضور موظفي الجهات")
+
+        self.btn(bb, "🖨️ طباعة / PDF", do_print, PURPLE).pack(side="right", padx=6)
+        self.btn(bb, "📊 استخراج Excel", do_excel, GREEN).pack(side="right", padx=6)
+        self.btn(bb, "إلغاء", win.destroy, MUTED).pack(side="right", padx=6)
 
     def gov_picker(self):
         """قائمة موظفي الجهة المختارة: اختر الموظف ثم سجّل دخول / خروج / ملاحظة، أو أضف موظفًا جديدًا."""
@@ -4698,9 +4992,12 @@ class CenterApp:
             self.root.config(cursor="")
             messagebox.showerror("خطأ", f"تعذر إنشاء التقرير:\n{ex}"); return
         self.root.config(cursor="")
-        total = sum(v for k, v in res.items() if k not in SUMMARY_ONLY + ("قاعدة العاملين",))
+        total = sum(v for k, v in res.items()
+                    if k not in SUMMARY_ONLY + ("قاعدة العاملين", "قاعدة موظفي الجهات"))
         if self.report_type.get() == "workers":
             total = res.get("قاعدة العاملين", 0)
+        if self.report_type.get() == "govstaff":
+            total = res.get("قاعدة موظفي الجهات", 0)
         msg = f"تم إنشاء التقرير بنجاح ({total} سجل):\n{path}"
         if total == 0:
             msg += "\n\nملاحظة: لا توجد سجلات في هذه الفترة."

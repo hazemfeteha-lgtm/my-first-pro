@@ -966,6 +966,64 @@ def _shape(text):
     except Exception:
         return text
 
+# ------------------------------------------------------- إضافات: المظهر وتقارير الجهات
+_DICT.update({
+    '🎨 الألوان والمظهر': '🎨 Colors & Appearance',
+    '🎨  الألوان والمظهر': '🎨  Colors & Appearance',
+    'الألوان والمظهر   🎨': 'Colors & Appearance   🎨',
+    'الألوان والمظهر': 'Colors & Appearance',
+    'اختر ألوان الواجهة وشكل العرض — التغيير يُطبَّق ويُحفظ فورًا، والوضع النهاري هو الأساس للعمل المكتبي.':
+        'Pick interface colors and layout style — changes apply and save instantly.',
+    'ألوان الواجهة (الوضع النهاري + الليلي)': 'Interface colors (light + dark)',
+    'شكل الواجهة': 'Interface style',
+    'ملاحظة: كل الألوان فاتحة ومناسبة للعمل المكتبي، والوضع الليلي يبقى متاحًا من زر القمر أعلى الشاشة.':
+        'Note: all palettes are light and office-friendly; dark mode stays available from the moon button.',
+    'مريح': 'Comfortable',
+    'مضغوط': 'Compact',
+    'كلاسيكي': 'Classic',
+    'أزرق مؤسسي': 'Corporate blue',
+    'حكومي كلاسيكي': 'Government classic',
+    'أخضر مؤسسي': 'Corporate green',
+    'أزرق ملكي': 'Royal blue',
+    'تركوازي بحري': 'Marine teal',
+    'رمادي مكتبي': 'Office gray',
+    'بيج دافئ': 'Warm beige',
+    'الوضع الليلي': 'Dark mode',
+    '✔ مختار': '✔ Selected',
+    'تطبيق': 'Apply',
+    '🖨️ طباعة تقارير': '🖨️ Print reports',
+    '🖨️ تقارير حضور وانصراف موظفي الجهات': '🖨️ Entity staff attendance reports',
+    'تقرير حضور وانصراف موظفي الجهات': 'Entity staff attendance report',
+    'حدد المدة، واختر جهة أو موظفًا (أو اترك الكل)، ثم اطبع أو استخرج Excel.':
+        'Pick the period and an entity or employee (or leave all), then print or export Excel.',
+    'اترك «كل الجهات» و«كل الموظفين» لعمل تقرير شامل.': 'Leave “All entities” and “All employees” for a full report.',
+    'كل الجهات': 'All entities',
+    'كل الموظفين': 'All employees',
+    'محتوى التقرير:': 'Report content:',
+    'تفاصيل الحضور': 'Attendance details',
+    'ملخص بالموظف والجهة': 'Summary by employee & entity',
+    'التفاصيل + الملخص': 'Details + summary',
+    'التقرير يطبع على ورق A4 منسق بلوجو خدمات مصر وخانات التوقيع، ويمكن حفظه PDF.':
+        'Printed on A4 with the Khadamat Misr logo and signature fields; can be saved as PDF.',
+    'لا توجد بيانات': 'No data',
+    'لا توجد سجلات حضور في المدة/الاختيار المحدد.': 'No attendance records for the selected period/filter.',
+    'حضور موظفي الجهات': 'Entity staff attendance',
+    'قاعدة موظفي الجهات': 'Entity staff database',
+    'ملخص حضور الموظفين': 'Staff attendance summary',
+    'ملخص الجهات': 'Entities summary',
+    'تفاصيل حضور وانصراف موظفي الجهات': 'Entity staff check-in/out details',
+    'ملخص حضور كل موظف': 'Attendance summary per employee',
+    'ملخص الحضور حسب الجهة': 'Attendance summary by entity',
+    'أيام مسجلة': 'Recorded days',
+    'أيام مكتملة': 'Complete days',
+    'أيام بدون انصراف': 'Days without check-out',
+    'إجمالي الساعات': 'Total hours',
+    'متوسط الساعات/يوم': 'Avg hours/day',
+    'عدد الموظفين المسجلين': 'Registered employees',
+    'عدد السجلات': 'Records',
+    'بالمدة أو بالجهة أو بالاسم': 'by period, entity or name',
+})
+
 # Phrase fallback: used for composed strings (f-strings with data inside).
 # Longer phrases are tried first so words are not translated piecemeal.
 _SKIP = {"خ", "تم", "من", "إلى", "في", "حفظ", "خطأ", "عدد", "اسم", "وارد", "جرد", "رصيد"}
