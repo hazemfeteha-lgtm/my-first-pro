@@ -24,8 +24,8 @@ LAST_RUN = "44104691904"
 EXE_BYTES = "16,372,059"
 EXE_MD5 = "205bea10828b8f6cb663036f9564ce1f"
 PKG_NAME = "KhadamatMisr_v2.8.0_windows.zip"
-PKG_FILES = "559"
-SHOTS = "18"
+PKG_FILES = "568"
+SHOTS = "32"
 
 
 def structure(path):
