@@ -12,6 +12,7 @@ import os, sys, csv, json, html, calendar, bisect, shutil, subprocess, webbrowse
 from pathlib import Path
 from contextlib import contextmanager
 from tkinter import ttk, messagebox, filedialog
+import tkinter.font as tkfont
 from datetime import datetime, date, timedelta
 # مكتبة Excel مرفقة داخل مجلد libs فلا يحتاج البرنامج إنترنت للتثبيت
 _BASE = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
@@ -21,7 +22,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.7.0"
+APP_VERSION = "2.8.0"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -2124,7 +2125,11 @@ def login_dialog(root):
     win = tk.Toplevel(root)
     win.title(f"{APP_NAME} - تسجيل الدخول"); win.configure(bg=BG); win.resizable(False, False)
     w, h = 420, 470
-    win.geometry(f"{w}x{h}+{(win.winfo_screenwidth() - w) // 2}+{max(0, (win.winfo_screenheight() - h) // 2 - 30)}")
+    try:
+        h = min(h, max(340, int(win.winfo_screenheight()) - 100))
+    except Exception:
+        pass
+    win.geometry(f"{w}x{h}+{max(0, (win.winfo_screenwidth() - w) // 2)}+{max(0, (win.winfo_screenheight() - h) // 2 - 30)}")
     res = {"user": None, "tries": 0, "retry": False}
 
     def switch_lang():
@@ -2248,8 +2253,7 @@ class CenterApp:
         self.root = root
         self.user = user or {"id": 0, "username": "admin", "is_admin": True, "perms": {}}
         self.root.title(T(f"{APP_NAME} - نظام إدارة المركز - {BRANCH}"))
-        self.root.geometry("1240x820")
-        self.root.minsize(1060, 700)
+        self.fit_to_screen()
         self.root.configure(bg=BG)
         self.nav_buttons = {}
         self._apply_scaling()
@@ -2257,6 +2261,53 @@ class CenterApp:
         self.build_shell()
         self.bind_keys()
         self.go("home")
+
+    def fit_to_screen(self):
+        """يضبط حجم النافذة على مقاس الشاشة الحقيقية، فتبان الواجهة كاملة على أي شاشة صغيرة أو كبيرة."""
+        try:
+            sw = int(self.root.winfo_screenwidth() or 1240)
+            sh = int(self.root.winfo_screenheight() or 820)
+        except Exception:
+            sw, sh = 1240, 820
+        # هامش بسيط لشريط المهام وإطار النافذة، مع حد أدنى معقول
+        w = min(1280, max(760, sw - 24))
+        h = min(880, max(520, sh - 90))
+        if sw < w: w = sw
+        if sh < h: h = sh
+        x = max(0, (sw - w) // 2)
+        y = max(0, (sh - h) // 3)
+        try:
+            self.root.geometry(f"{w}x{h}+{x}+{y}")
+            self.root.minsize(min(720, sw), min(470, sh))
+        except Exception:
+            pass
+        self._screen_size = (sw, sh)
+
+    def _clamp_size(self, size, min_w=340, min_h=260):
+        """يصغّر أي مقاس نافذة (مثل 940x780) لو أكبر من الشاشة."""
+        try:
+            sw, sh = getattr(self, "_screen_size", (0, 0))
+            if not sw or not sh:
+                sw, sh = int(self.root.winfo_screenwidth()), int(self.root.winfo_screenheight())
+            w, h = (int(v) for v in str(size).lower().split("x")[:2])
+            w = min(w, max(min_w, sw - 30))
+            h = min(h, max(min_h, sh - 110))
+            return f"{w}x{h}"
+        except Exception:
+            return size
+
+    def _minsize(self, win, w, h):
+        """حد أدنى لمقاس النافذة، مع عدم تجاوز مقاس الشاشة."""
+        try:
+            sw, sh = getattr(self, "_screen_size", (0, 0))
+            if not sw or not sh:
+                sw, sh = int(self.root.winfo_screenwidth()), int(self.root.winfo_screenheight())
+            win.minsize(min(int(w), max(320, sw - 30)), min(int(h), max(240, sh - 110)))
+        except Exception:
+            try:
+                win.minsize(w, h)
+            except Exception:
+                pass
 
     # ---------- الصلاحيات ----------
     def level(self, page):
@@ -2364,6 +2415,8 @@ class CenterApp:
         um = tk.Menu(self.user_btn, tearoff=0, font=(FONT, 10)); self.user_btn.config(menu=um)
         um.add_command(label="🔑  تغيير كلمة المرور", command=self.change_password_dialog)
         um.add_command(label="🎨  المظهر والثيمات", command=self.appearance_dialog)
+        um.add_command(label="⛶  ملء الشاشة", command=self.toggle_fullscreen)
+        um.add_command(label="⌨️  اختصارات لوحة المفاتيح", command=self.shortcuts_dialog)
         if self.user["is_admin"]:
             um.add_command(label="👥  المستخدمون والصلاحيات", command=self.users_dialog)
             um.add_command(label="🌐  الشبكة (LAN)", command=self.net_dialog)
@@ -2378,21 +2431,44 @@ class CenterApp:
             paint_gradient(hdr, w, H, H1, H2)
             hdr.create_rectangle(0, H - 4, w, H, fill=GOLD, outline="", tags="grad")
             hdr.tag_lower("grad")
-            hdr.coords(title_id, w // 2, int(33 * scale)); hdr.coords(sub_id, w // 2, int(63 * scale))
+            # عنوان أصغر على الشاشات الضيقة عشان مايتداخلش مع الأزرار
+            narrow = w < 1060
+            tiny = w < 900
+            dark = THEME in DARK_THEMES
+            t_txt = ("🌙" if dark else "☀️") if tiny else ("🌙  الوضع الليلي" if dark else "☀️  الوضع النهاري")
+            l_txt = "🌐" if tiny else ("🌐  العربية" if en else "🌐  English")
+            u_txt = "👤  ▾" if tiny else f"👤  {who}  ▾"
+            self.theme_btn.config(text=t_txt)
+            self.lang_btn.config(text=l_txt)
+            self.user_btn.config(text=u_txt)
+            hdr.itemconfig(title_id, font=(FONT, 20 if narrow else 26, "bold"))
+            hdr.itemconfig(sub_id, font=(FONT, 11 if narrow else 13, "bold"))
+            f9 = tkfont.Font(font=(FONT, 9, "bold"))
+            gap = max(8, int(10 * scale))
             row1, row2 = int(28 * scale), int(58 * scale)
+            logo_w = max(logo.winfo_reqwidth(), 40)
             if en:                          # English interface: logo left, controls right (LTR)
                 hdr.coords(logo_win, 22, H // 2 - 2)
                 hdr.coords(self.clock_id, w - 24, row1)
-                hdr.coords(btn_win, w - 24, row2)
-                hdr.coords(lang_win, w - int(156 * scale), row2)
-                hdr.coords(umb_win, w - int(300 * scale), row2)
+                x = w - 20
+                for txt, wid in ((t_txt, btn_win), (l_txt, lang_win), (u_txt, umb_win)):
+                    hdr.coords(wid, x, row2)
+                    x -= max(f9.measure(txt) + 30, 42) + gap
+                lo, hi = 22 + logo_w + 14, x + gap - 12
             else:                           # Arabic interface (RTL)
                 hdr.coords(logo_win, w - 22, H // 2 - 2)
                 hdr.coords(self.clock_id, 24, row1)
-                hdr.coords(btn_win, 24, row2)
-                hdr.coords(lang_win, int(184 * scale), row2)
-                hdr.coords(umb_win, int(288 * scale), row2)
+                x = 20
+                for txt, wid in ((t_txt, btn_win), (l_txt, lang_win), (u_txt, umb_win)):
+                    hdr.coords(wid, x, row2)
+                    x += max(f9.measure(txt) + 30, 42) + gap
+                lo, hi = x - gap + 12, (w - 22) - logo_w - 14
+            cx = w // 2 if (w >= 1100 or hi <= lo + 40) else (lo + hi) // 2
+            hdr.coords(title_id, cx, int(33 * scale)); hdr.coords(sub_id, cx, int(63 * scale))
         hdr.bind("<Configure>", layout)
+        self.hdr = hdr
+        self.title_id = title_id
+        self.sub_id = sub_id
         self.tick()
 
         footer = tk.Frame(self.root, bg=NAVY, height=30)
@@ -2404,7 +2480,7 @@ class CenterApp:
 
         shell = tk.Frame(self.root, bg=BG)
         shell.pack(fill="both", expand=True)
-        self.sidebar = tk.Frame(shell, bg=NAVY_2, width=int(285 * scale))
+        self.sidebar = tk.Frame(shell, bg=NAVY_2, width=self._side_width())
         self.sidebar.pack(side="right", fill="y")
         self.sidebar.pack_propagate(False)
         tk.Label(self.sidebar, text="القائمة الرئيسية", bg=NAVY_2, fg=SIDE_MUTED,
@@ -2433,8 +2509,107 @@ class CenterApp:
                       bg=NAVY, fg=SIDE_ACCENT2, activebackground=BLUE, activeforeground="white", relief="flat", bd=0,
                       font=(FONT, 10, "bold"), padx=18, pady=9, cursor="hand2").pack(side="bottom", fill="x", padx=10, pady=(0, 6))
         self.active_key = None
-        self.content = tk.Frame(shell, bg=BG)
-        self.content.pack(side="left", fill="both", expand=True)
+        # منطقة المحتوى داخل Canvas بشرائط تمرير (رأسي + أفقي) عشان كل الصفحة تبان على أي مقاس شاشة
+        self.content_wrap = tk.Frame(shell, bg=BG)
+        self.content_wrap.pack(side="left", fill="both", expand=True)
+        self.content_wrap.rowconfigure(0, weight=1)
+        self.content_wrap.columnconfigure(1, weight=1)
+        self.content_canvas = tk.Canvas(self.content_wrap, bg=BG, highlightthickness=0, bd=0)
+        self.content_vsb = ttk.Scrollbar(self.content_wrap, orient="vertical", command=self.content_canvas.yview)
+        self.content_hsb = ttk.Scrollbar(self.content_wrap, orient="horizontal", command=self.content_canvas.xview)
+        self.content_canvas.configure(yscrollcommand=self.content_vsb.set, xscrollcommand=self.content_hsb.set)
+        self.content_vsb.grid(row=0, column=0, sticky="ns")
+        self.content_canvas.grid(row=0, column=1, sticky="nsew")
+        self.content_hsb.grid(row=1, column=1, sticky="ew")
+        self._vsb_shown = True
+        self._hsb_shown = True
+        self.content = tk.Frame(self.content_canvas, bg=BG)
+        self.content_id = self.content_canvas.create_window((0, 0), window=self.content, anchor="nw")
+        self._last_size = None
+        self.content.bind("<Configure>", lambda e: self._fit_content())
+        self.content_canvas.bind("<Configure>", lambda e: self._fit_content())
+        self.root.bind("<Configure>", self._on_root_config, add="+")
+        self._bind_wheel()
+
+    def _side_width(self):
+        """عرض القائمة الجانبية حسب عرض النافذة (تضيق تلقائيًا على الشاشات الصغيرة)."""
+        scale = max(1.0, FONT_SCALE)
+        try:
+            w = self.root.winfo_width()
+        except Exception:
+            w = 0
+        if w <= 1:
+            w = 1240
+        if w < 950:
+            return int(205 * scale)
+        if w < 1150:
+            return int(240 * scale)
+        return int(285 * scale)
+
+    def _on_root_config(self, e=None):
+        """عند تغيير حجم النافذة: يعدّل عرض القائمة الجانبية ويعيد ضبط التمرير."""
+        if e is not None and getattr(e, "widget", None) is not self.root:
+            return
+        try:
+            want = self._side_width()
+            if getattr(self, "_side_now", None) != want:
+                self._side_now = want
+                self.sidebar.config(width=want)
+        except Exception:
+            pass
+        self._fit_content()
+
+    def _fit_content(self):
+        """يخلي المحتوى يملأ المكان المتاح، ويضيف تمرير لما يكون أطول/أعرض من الشاشة."""
+        try:
+            c = self.content_canvas
+            cw, ch = max(1, c.winfo_width()), max(1, c.winfo_height())
+            rw, rh = max(1, self.content.winfo_reqwidth()), max(1, self.content.winfo_reqheight())
+            w, h = max(cw, rw), max(ch, rh)
+            c.configure(scrollregion=(0, 0, w, h))
+            if self._last_size != (w, h):
+                self._last_size = (w, h)
+                c.itemconfig(self.content_id, width=w, height=h)
+            self._show_scrollbars(rw > cw + 1, rh > ch + 1)
+        except Exception:
+            pass
+
+    def _show_scrollbars(self, need_h, need_v):
+        """يخفي شرائط التمرير لو مش محتاجينها (شكل أنضف)."""
+        try:
+            if bool(need_v) != self._vsb_shown:
+                self._vsb_shown = bool(need_v)
+                self.content_vsb.grid() if need_v else self.content_vsb.grid_remove()
+            if bool(need_h) != self._hsb_shown:
+                self._hsb_shown = bool(need_h)
+                self.content_hsb.grid() if need_h else self.content_hsb.grid_remove()
+        except Exception:
+            pass
+
+    def _bind_wheel(self):
+        """تمرير المحتوى بعجلة الفأرة (ويندوز ولينكس) — بدون التأثير على النوافذ المنبثقة."""
+        try:
+            for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+                self.root.unbind_all(seq)
+                self.root.bind_all(seq, self._on_wheel)
+        except Exception:
+            pass
+
+    def _on_wheel(self, e):
+        try:
+            w = self.root.winfo_containing(e.x_root, e.y_root)
+            if w is None or not str(w).startswith(str(self.content_canvas)):
+                return
+            num = getattr(e, "num", 0)
+            if num == 4:
+                step = -1
+            elif num == 5:
+                step = 1
+            else:
+                step = -1 if (getattr(e, "delta", 0) or 0) > 0 else 1
+            self.content_canvas.yview_scroll(step * 3, "units")
+        except Exception:
+            pass
 
     def rebuild_ui(self):
         """يعيد بناء الواجهة بعد تغيير الألوان أو الشكل أو اللغة مع البقاء في نفس الصفحة."""
@@ -2465,12 +2640,79 @@ class CenterApp:
                ("F9", "purchases"), ("F10", "reports"), ("F11", "compare")]
 
     def bind_keys(self):
-        """يربط اختصارات لوحة المفاتيح: F1..F12 للأقسام + Alt+الأسهم للتنقّل بين الأقسام."""
+        """يربط اختصارات لوحة المفاتيح: F1..F12 للأقسام + Alt+الأسهم للتنقّل + أسهم/PageUp/Down للتمرير."""
         for seq, key in self.HOTKEYS:
-            self.root.bind(seq, lambda e, k=key: (self.go(k), "break")[1])
+            # مهم: لازم أقواس <> حوالين اسم الزرار، وإلا الربط مايشتغلش أصلاً
+            self.root.bind(f"<{seq}>", lambda e, k=key: (self.go(k), "break")[1])
         self.root.bind("<F12>", lambda e: (self.appearance_dialog(), "break")[1])
+        self.root.bind("<Shift-F1>", lambda e: (self.shortcuts_dialog(), "break")[1])
         self.root.bind("<Alt-Right>", lambda e: (self.cycle_page(-1), "break")[1])
         self.root.bind("<Alt-Left>", lambda e: (self.cycle_page(1), "break")[1])
+        # التمرير بالكيبورد (لو مفيش جدول/خانة مفتوحة بتمتص المفاتيح)
+        self.root.bind("<Prior>", lambda e: self._scroll_page(-1))      # PageUp
+        self.root.bind("<Next>", lambda e: self._scroll_page(1))        # PageDown
+        self.root.bind("<Control-Home>", lambda e: self.content_canvas.yview_moveto(0))
+        self.root.bind("<Control-End>", lambda e: self.content_canvas.yview_moveto(1))
+        self.root.bind("<Alt-Home>", lambda e: self.go("home"))
+        self.root.bind("<Control-f>", lambda e: (self.toggle_fullscreen(), "break")[1])
+
+    def toggle_fullscreen(self):
+        """يكبّر البرنامج على الشاشة كلها أو يرجّعه لحجمه الطبيعي."""
+        self._fs = not getattr(self, "_fs", False)
+        try:
+            if _sys.platform.startswith("win") and self._fs:
+                self.root.attributes("-fullscreen", True)
+                return
+            if _sys.platform.startswith("win"):
+                self.root.attributes("-fullscreen", False)
+                self.fit_to_screen()
+                return
+        except Exception:
+            pass
+        # على أي نظام تاني: نكبّر لمقاس الشاشة (يشتغل من غير مدير نوافذ)
+        try:
+            if self._fs:
+                sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+                self.root.geometry("%dx%d+0+0" % (sw, sh))
+            else:
+                self.fit_to_screen()
+        except Exception:
+            pass
+
+    def _scroll_page(self, direction):
+        try:
+            self.content_canvas.yview_scroll(direction, "pages")
+        except Exception:
+            pass
+
+    def shortcuts_dialog(self):
+        """نافذة بكل اختصارات لوحة المفاتيح."""
+        win = self._dialog("اختصارات لوحة المفاتيح", "560x600")
+        tk.Label(win, text="⌨️ اختصارات لوحة المفاتيح", bg=BG, fg=INK,
+                 font=(FONT, 16, "bold")).pack(anchor="e", padx=20, pady=(14, 4))
+        tk.Label(win, text="تقدر تدير البرنامج كله من الكيبورد من غير فأرة.", bg=BG, fg=MUTED,
+                 font=(FONT, 10)).pack(anchor="e", padx=22, pady=(0, 8))
+        rows = [("F1 … F11", "الانتقال السريع للأقسام (الرئيسية، ملاحظات، العاملين، …)"),
+                ("F12", "فتح شاشة المظهر والثيمات"),
+                ("Alt + →  /  Alt + ←", "التنقّل بين الأقسام واحد واحد"),
+                ("Alt + Home", "الرجوع للصفحة الرئيسية"),
+                ("Tab  /  Shift + Tab", "التنقّل بين الأزرار والخانات"),
+                ("Space  /  Enter", "تشغيل الزرار اللي عليه التركيز"),
+                ("↑ ↓ ← →", "التحرّك جوه الجداول والقوائم"),
+                ("PageUp / PageDown", "تمرير الصفحة لأعلى / لأسفل"),
+                ("Ctrl + Home / Ctrl + End", "أول الصفحة / آخر الصفحة"),
+                ("Ctrl + F", "ملء الشاشة / الرجوع لحجمها الطبيعي"),
+                ("عجلة الفأرة", "تمرير المحتوى"),
+                ("Esc", "إغلاق أي نافذة مفتوحة"),
+                ("Shift + F1", "عرض الشاشة دي")]
+        box = self.panel(win); box.pack(fill="both", expand=True, padx=16, pady=8)
+        for i, (k, d) in enumerate(rows):
+            r = tk.Frame(box, bg=WHITE); r.pack(fill="x", padx=12, pady=3)
+            tk.Label(r, text=k, bg=WHITE, fg=PRIMARY, font=(FONT, 10, "bold"),
+                     width=22, anchor="e").pack(side="right")
+            tk.Label(r, text=d, bg=WHITE, fg=TEXT, font=(FONT, 10), anchor="e",
+                     justify="right", wraplength=320).pack(side="right", padx=(0, 8))
+        self.btn(win, "تمام", win.destroy, PRIMARY).pack(pady=10)
 
     def visible_pages(self):
         return [k for k, _ic, _lb in self.NAV if k == "home" or self.can(k, "view")]
@@ -2498,7 +2740,7 @@ class CenterApp:
     def appearance_dialog(self):
         """شاشة المظهر: 8 ثيمات + نوع الخط + حجم الخط + شكل الأزرار + كثافة العرض."""
         win = self._dialog("المظهر والثيمات", "940x780")
-        win.minsize(840, 660)
+        self._minsize(win, 840, 660)
         tk.Label(win, text="🎨 المظهر والثيمات", bg=BG, fg=INK, font=(FONT, 18, "bold")).pack(anchor="e", padx=24, pady=(14, 2))
         tk.Label(win, text="اختر ثيمًا كاملًا (ألوان + خط + شكل) — التغيير يُطبَّق ويُحفظ فورًا على هذا الجهاز.",
                  bg=BG, fg=MUTED, font=(FONT, 10)).pack(anchor="e", padx=26)
@@ -2697,7 +2939,7 @@ class CenterApp:
         if not self.need_admin():
             return
         win = self._dialog("المستخدمون والصلاحيات", "820x520")
-        win.minsize(700, 420)
+        self._minsize(win, 700, 420)
         bx = tk.Frame(win, bg=BG); bx.pack(side="bottom", fill="x", pady=10)
         tk.Label(win, text="👥 المستخدمون والصلاحيات", bg=BG, fg=INK, font=(FONT, 15, "bold")).pack(anchor="e", padx=20, pady=(12, 2))
         tk.Label(win, text="أضف مستخدمًا وحدد لكل قسم: ممنوع / عرض فقط / عرض + إضافة / تعديل وحذف كامل.",
@@ -2767,7 +3009,7 @@ class CenterApp:
             cur = {}
         is_self = bool(uid and uid == self.user["id"])
         win = self._dialog("تعديل مستخدم" if uid else "إضافة مستخدم", "800x680")
-        win.minsize(740, 560)
+        self._minsize(win, 740, 560)
         bx = tk.Frame(win, bg=BG); bx.pack(side="bottom", fill="x", pady=8)
         tk.Label(win, text=("✏️ تعديل مستخدم" if uid else "➕ إضافة مستخدم جديد"), bg=BG, fg=INK,
                  font=(FONT, 15, "bold")).pack(anchor="e", padx=20, pady=(10, 0))
@@ -2892,7 +3134,7 @@ class CenterApp:
             return
         is_client = bool(netmod and NET_MODE == netmod.MODE_CLIENT)
         win = self._dialog("النسخ الاحتياطية", "1000x680")
-        win.minsize(880, 560)
+        self._minsize(win, 880, 560)
 
         head = tk.Frame(win, bg=BG); head.pack(fill="x", padx=22, pady=(14, 0))
         tk.Label(head, text="🗂️ النسخ الاحتياطية", bg=BG, fg=INK, font=(FONT, 16, "bold")).pack(anchor="e")
@@ -3093,6 +3335,10 @@ class CenterApp:
         win = tk.Toplevel(self.root)
         win.title("الشبكة المحلية (LAN)"); win.configure(bg=BG); win.resizable(False, False)
         w, h = 580, 600
+        try:
+            h = min(h, max(380, int(win.winfo_screenheight()) - 120))
+        except Exception:
+            pass
         win.geometry(f"{w}x{h}+{(win.winfo_screenwidth() - w) // 2}+{max(0, (win.winfo_screenheight() - h) // 2 - 30)}")
         tk.Label(win, text="🌐  إعداد الشبكة المحلية", bg=BG, fg=INK, font=(FONT, 15, "bold")).pack(pady=(16, 2))
         tk.Label(win, text="خلّي جهازًا واحدًا «رئيسي (سيرفر)» والباقي «محطة»، واكتب نفس المنفذ وكلمة الربط في الكل.",
@@ -3194,7 +3440,12 @@ class CenterApp:
         win = tk.Toplevel(self.root)
         win.title("سجل العمليات"); win.configure(bg=BG)
         w, h = 1000, 620
-        win.geometry(f"{w}x{h}+{(win.winfo_screenwidth() - w) // 2}+{max(0, (win.winfo_screenheight() - h) // 2 - 30)}")
+        try:
+            sw, sh = int(win.winfo_screenwidth()), int(win.winfo_screenheight())
+            w, h = min(w, max(420, sw - 40)), min(h, max(320, sh - 120))
+        except Exception:
+            pass
+        win.geometry(f"{w}x{h}+{max(0, (win.winfo_screenwidth() - w) // 2)}+{max(0, (win.winfo_screenheight() - h) // 2 - 30)}")
         tk.Label(win, text="📋  سجل العمليات (مين أضاف/عدّل/حذف ومن أنهي جهاز)", bg=BG, fg=INK,
                  font=(FONT, 14, "bold")).pack(pady=10)
         cols = ("ts", "username", "station", "action", "table_name", "detail")
@@ -3263,10 +3514,20 @@ class CenterApp:
             lbl = tk.Label(self.content, text=txt, bg=SOFT, fg=RED, font=(FONT, 10, "bold"), anchor="e", padx=12, pady=4)
             if kids: lbl.pack(fill="x", padx=24, pady=(8, 0), before=kids[0])
             else: lbl.pack(fill="x", padx=24, pady=(8, 0))
+        # ارجع لأول الصفحة وأعيد حساب التمرير بعد بناء القسم
+        try:
+            self.content_canvas.yview_moveto(0)
+            self.content_canvas.xview_moveto(0)
+            self.content.update_idletasks()
+            self._last_size = None
+            self._fit_content()
+        except Exception:
+            pass
 
     def clear_content(self):
         for w in self.content.winfo_children():
             w.destroy()
+        self._last_size = None
 
     def page_title(self, title, subtitle=""):
         tk.Label(self.content, text=title, bg=BG, fg=INK, font=(FONT, 21, "bold"),
@@ -3440,7 +3701,7 @@ class CenterApp:
         with db() as con:
             rows = con.execute(sql, args).fetchall()
         win = self._dialog("معلومات سريعة - " + title, "860x560")
-        win.minsize(640, 420)
+        self._minsize(win, 640, 420)
         bx = tk.Frame(win, bg=BG); bx.pack(side="bottom", fill="x", pady=10)
         inner = tk.Frame(bx, bg=BG); inner.pack()
         if self.can(section, "view"):
@@ -4008,10 +4269,11 @@ class CenterApp:
         old_name = r[0]
         win = tk.Toplevel(self.root)
         win.title("بيانات العامل" if wid else "إضافة عامل جديد")
-        win.configure(bg=BG); win.geometry("830x700")
+        _sz = self._clamp_size("830x700", 520, 400)
+        win.configure(bg=BG); win.geometry(_sz)
         try:
             win.transient(self.root)
-            win.geometry(f"830x700+{self.root.winfo_rootx() + 120}+{max(0, self.root.winfo_rooty() + 20)}")
+            win.geometry(f"{_sz}+{self.root.winfo_rootx() + 120}+{max(0, self.root.winfo_rooty() + 20)}")
             win.wait_visibility(); win.grab_set()
         except Exception:
             pass
@@ -4280,7 +4542,7 @@ class CenterApp:
         if not row:
             messagebox.showerror("خطأ", "السجل غير موجود."); self._reload(table, tree); return
         win = self._dialog(title, "640x600")
-        win.minsize(560, 420)
+        self._minsize(win, 560, 420)
         bx = tk.Frame(win, bg=BG); bx.pack(side="bottom", fill="x", pady=12)
         tk.Label(win, text="✏️ " + title, bg=BG, fg=INK, font=(FONT, 15, "bold")).pack(anchor="e", padx=22, pady=(14, 4))
         getters = {}
@@ -4512,10 +4774,20 @@ class CenterApp:
 
     def _dialog(self, title, size):
         win = tk.Toplevel(self.root)
+        size = self._clamp_size(size)
         win.title(title); win.configure(bg=BG); win.geometry(size)
         try:
             win.transient(self.root)
-            win.geometry(f"{size}+{self.root.winfo_rootx() + 160}+{max(0, self.root.winfo_rooty() + 20)}")
+            px = self.root.winfo_rootx() + 120
+            py = max(0, self.root.winfo_rooty() + 20)
+            try:
+                sw, sh = int(win.winfo_screenwidth()), int(win.winfo_screenheight())
+                dw, dh = (int(v) for v in size.lower().split("x")[:2])
+                px = max(0, min(px, sw - dw - 10))
+                py = max(0, min(py, sh - dh - 40))
+            except Exception:
+                pass
+            win.geometry(f"{size}+{px}+{py}")
             win.bind("<Escape>", lambda e: win.destroy())   # Esc يغلق أي نافذة
             win.wait_visibility(); win.grab_set()
         except Exception:
@@ -4524,7 +4796,7 @@ class CenterApp:
 
     def stock_in_dialog(self, category):
         win = self._dialog(f"تسجيل وارد - {INV_NAMES[category]}", "760x740")
-        win.minsize(640, 520)
+        self._minsize(win, 640, 520)
         bx = tk.Frame(win, bg=BG); bx.pack(side="bottom", fill="x", pady=10)      # أزرار الحفظ أولًا لتظل ظاهرة دائمًا
         tk.Label(win, text=f"📥 تسجيل وارد جديد - {INV_NAMES[category]}", bg=BG, fg=INK,
                  font=(FONT, 15, "bold")).pack(anchor="e", padx=20, pady=(12, 2))
@@ -4597,7 +4869,7 @@ class CenterApp:
 
     def stock_log_dialog(self, category):
         win = self._dialog(f"سجل الوارد - {INV_NAMES[category]}", "800x600")
-        win.minsize(640, 460)
+        self._minsize(win, 640, 460)
         bx = tk.Frame(win, bg=BG); bx.pack(side="bottom", fill="x", pady=8)       # الأزرار أولًا لتظل ظاهرة
         tk.Label(win, text=f"📋 سجل الوارد - {INV_NAMES[category]}", bg=BG, fg=INK,
                  font=(FONT, 15, "bold")).pack(anchor="e", padx=20, pady=(12, 2))
@@ -4880,7 +5152,7 @@ class CenterApp:
 
     def purchase_dialog(self, default_cat="paper"):
         win = self._dialog("تسجيل مشتريات جديدة", "900x840")
-        win.minsize(820, 640)
+        self._minsize(win, 820, 640)
         bx = tk.Frame(win, bg=BG); bx.pack(side="bottom", fill="x", pady=10)      # أزرار الحفظ أولًا لتظل ظاهرة
         tk.Label(win, text="🛒 تسجيل مشتريات جديدة", bg=BG, fg=INK, font=(FONT, 15, "bold")).pack(anchor="e", padx=20, pady=(12, 2))
         tk.Label(win, text="أضف الأصناف واحدًا واحدًا (اختر من القائمة أو اكتب الاسم يدويًا) ثم أرفق صورة الفاتورة واحفظ.",
@@ -5264,7 +5536,7 @@ class CenterApp:
     def gov_report_dialog(self):
         """تقرير حضور وانصراف موظفي الجهات: بالمدة / بالجهة / بالاسم — طباعة أو Excel."""
         win = self._dialog("طباعة تقارير حضور الجهات", "900x700")
-        win.minsize(780, 600)
+        self._minsize(win, 780, 600)
         tk.Label(win, text="🖨️ تقارير حضور وانصراف موظفي الجهات", bg=BG, fg=INK,
                  font=(FONT, 16, "bold")).pack(anchor="e", padx=22, pady=(14, 2))
         tk.Label(win, text="حدد المدة، واختر جهة أو موظفًا (أو اترك الكل)، ثم اطبع أو استخرج Excel.",
@@ -5360,7 +5632,7 @@ class CenterApp:
         """قائمة موظفي الجهة المختارة: اختر الموظف ثم سجّل دخول / خروج / ملاحظة، أو أضف موظفًا جديدًا."""
         ent = self.gov_entity.get()
         win = self._dialog(f"موظفو {ent}", "720x640")
-        win.minsize(620, 500)
+        self._minsize(win, 620, 500)
         tk.Label(win, text=f"🏛️ {ent}", bg=BG, fg=INK, font=(FONT, 17, "bold")).pack(anchor="e", padx=22, pady=(12, 0))
         tk.Label(win, text="اضغط مرتين على الموظف (أو اختره ثم «اختيار وتسجيل»). لو موظف جديد اكتب اسمه في الأسفل.",
                  bg=BG, fg=MUTED, font=(FONT, 9)).pack(anchor="e", padx=24, pady=(0, 6))
@@ -6290,11 +6562,25 @@ if __name__ == "__main__":
 
 
 # ============================================================================
-#  ★ نقطة نهاية آخر تحديث (END OF LAST UPDATE) — الإصدار 2.6.2 ★
+#  ★ نقطة نهاية آخر تحديث (END OF LAST UPDATE) — الإصدار 2.8.0 ★
 # ----------------------------------------------------------------------------
 #  كل الكود فوق السطر ده خلص ومتّفق عليه. أي إضافة أو تعديل جديد يبدأ من هنا.
 #
-#  آخر حاجة اتعملت: محرّك المظهر والثيمات (2.7.0) —
+#  آخر حاجة اتعملت: الواجهة تبان كاملة على أي شاشة + الكيبورد (2.8.0) —
+#    • fit_to_screen()      : بيقيس الشاشة الحقيقية ويفتح بمقاس مضمون إنه يدخل فيها.
+#    • content_canvas/content_vsb/content_hsb : منطقة المحتوى جوه Canvas بشريطي تمرير.
+#    • _fit_content()/_show_scrollbars() : يخلي المحتوى يملأ المتاح + يخفي الشريط لو مش محتاجه.
+#    • layout() (جوه build_shell) : هيدر متكيّف — يصغّر العنوان ويزحزحه، ويختصر نصوص الأزرار
+#      على الشاشات الضيقة جدًا، فمفيش تداخل بين العنوان والأزرار.
+#    • _side_width()/_on_root_config() : عرض القائمة الجانبية بيتغيّر حسب عرض النافذة.
+#    • _on_wheel()/_bind_wheel() : تمرير المحتوى بعجلة الفأرة (ويندوز ولينكس).
+#    • toggle_fullscreen()  : ملء الشاشة (قائمة المستخدم + Ctrl+F).
+#    • bind_keys()          : **إصلاح** F1…F11 كانت bind("F1") بدون أقواس → bind("<F1>")
+#      (كانت مش شغّالة أصلاً)، + PageUp/Down و Ctrl+Home/End للتمرير.
+#    • shortcuts_dialog()   : نافذة «⌨️ اختصارات لوحة المفاتيح» (Shift+F1).
+#    • _clamp_size()/_minsize() : كل النوافذ المنبثقة بتتصغّر لو أكبر من الشاشة.
+#
+#  قبل كده (2.7.0): محرّك المظهر والثيمات —
 #    • THEMES/THEME_LABELS/THEME_ORDER/DARK_THEMES : 8 ثيمات (ألوان مستخرجة من صور المستخدم).
 #    • UI_FONTS/FONT_LABELS + apply_font()         : 6 خطوط (يغيّر FONT العام).
 #    • FONT_SIZES/FONT_SIZE_LABELS + apply_font_size() : صغير/عادي/كبير عبر tk scaling (_apply_scaling).
