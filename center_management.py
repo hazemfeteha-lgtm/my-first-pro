@@ -21,7 +21,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.6.0"
+APP_VERSION = "2.6.1"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -3478,6 +3478,15 @@ class CenterApp:
             except Exception: pass
             self._notes_banner = None
         pending = self._pending_notes(True)
+        # ---- تنبيه بصوت عند وصول ملاحظة جديدة (مش أول تحميل، ومش عند التنقّل) ----
+        ids = {r[0] for r in pending}
+        fresh = ids - getattr(self, "_notes_seen", set())
+        first = not getattr(self, "_notes_init", False)
+        self._notes_seen = ids
+        self._notes_init = True
+        if fresh and not first:
+            urgent = any((r[3] or "") == "عاجلة" for r in pending if r[0] in fresh)
+            self._play_note_sound(urgent)
         if not pending:
             return
         kids = self.content.winfo_children()
@@ -3502,6 +3511,40 @@ class CenterApp:
                      anchor="e", justify="right", wraplength=980).pack(side="right", fill="x", expand=True)
         tk.Frame(bar, bg=AMBER, height=6).pack()
         self._notes_banner = bar
+
+    def _sound_on(self):
+        """هل التنبيه الصوتي للملاحظات مفعّل؟ (محفوظ في settings.json)."""
+        try:
+            return bool(load_settings().get("notes_sound", True))
+        except Exception:
+            return True
+
+    def _beep(self, urgent=False):
+        """صوت تنبيه: على ويندوز صوت النظام، وعلى لينكس جرس Tk."""
+        try:
+            import winsound
+            winsound.MessageBeep(winsound.MB_ICONHAND if urgent else winsound.MB_ICONEXCLAMATION)
+            return
+        except Exception:
+            pass
+        try:
+            self.root.bell()
+        except Exception:
+            pass
+
+    def _play_note_sound(self, urgent=False):
+        """يشتغل لما توصل ملاحظة جديدة (العاجلة بجرسين)."""
+        if not self._sound_on():
+            return
+        self._beep(urgent)
+        if urgent:
+            try: self.root.after(450, lambda: self._beep(True))
+            except Exception: pass
+
+    def toggle_note_sound(self):
+        cfg = load_settings()
+        cfg["notes_sound"] = bool(self.note_sound.get())
+        save_settings(cfg)
 
     def mark_note_done(self, note_id):
         """يعلّم الملاحظة كـ «تم» (من أي وحدة)."""
@@ -3562,6 +3605,11 @@ class CenterApp:
         cb.bind("<<ComboboxSelected>>", lambda e: self.load_notes())
         self.btn(sbar, "✅ قدّم المحدد", self.mark_note_done_selected, GREEN).pack(side="left", padx=6)
         self.btn(sbar, "🔄 تحديث", self.load_notes, MUTED).pack(side="left", padx=6)
+        self.note_sound = tk.BooleanVar(value=self._sound_on())
+        tk.Checkbutton(sbar, text="🔔 تنبيه بصوت عند وصول ملاحظة جديدة", variable=self.note_sound,
+                       command=self.toggle_note_sound, bg=BG, fg=TEXT, activebackground=BG,
+                       activeforeground=TEXT, selectcolor=WHITE, font=(FONT, 10, "bold"),
+                       cursor="hand2").pack(side="left", padx=10)
         self.notes_tree = self.make_tree(self.content, ("body", "target", "prio", "status", "by", "time"),
                                          ("نص الملاحظة", "الوحدة", "الأولوية", "الحالة", "قدّمها", "التاريخ والوقت"),
                                          (400, 120, 80, 90, 120, 150), 11)
@@ -6097,17 +6145,17 @@ if __name__ == "__main__":
 
 
 # ============================================================================
-#  ★ نقطة نهاية آخر تحديث (END OF LAST UPDATE) — الإصدار 2.5.0 ★
+#  ★ نقطة نهاية آخر تحديث (END OF LAST UPDATE) — الإصدار 2.6.1 ★
 # ----------------------------------------------------------------------------
 #  كل الكود فوق السطر ده خلص ومتّفق عليه. أي إضافة أو تعديل جديد يبدأ من هنا.
 #
-#  آخر حاجة اتعملت: النسخ الاحتياطي الكامل + شاشة إدارة النسخ —
-#    • backup_full_now()  : نسخة كاملة (قاعدة البيانات + كل الصور) في ملف zip واحد.
-#    • do_restore()       : استرجاع موحّد (نسخة أمان + حفظ المستخدمين + دمج الصور).
-#    • list_backups()/backup_kind()/validate_backup_db() : عرض وتصنيف والتحقق.
-#    • backups_dialog()   : شاشة إدارة النسخ (عرض/إنشاء سريعة وكاملة/استرجاع/حذف/فتح المجلد).
-#    • restore_backup()   : بقت تقبل .db و .zip (النسخة الكاملة بترجّع الصور كمان).
-#    • net.py             : /backup بيدعم full + نقطة /backups لعرض النسخ من المحطة.
+#  آخر حاجة اتعملت: ملاحظات وتعليمات الوحدات + تنبيه بصوت —
+#    • جدول notes      : body/target/priority/created_by/created_at/status/done_by/done_at.
+#    • show_notes()    : شاشة «📢 ملاحظات» (إرسال + فلتر الكل/جديد/تم + تقديم + حذف + مفتاح الصوت).
+#    • build_notes_banner() : شريط أصفر أعلى أي صفحة على الوحدة المستهدفة + زر «✅ قدمها».
+#    • mark_note_done()     : تحويل الملاحظة لـ «تم» (محليًا أو عبر /note_done على الشبكة).
+#    • _play_note_sound()   : تنبيه صوتي عند وصول ملاحظة جديدة (العاجلة بجرسين) — يُحفظ في settings.json.
+#    • net.py               : notes في خريطة الصلاحيات + نقطة /note_done + دالة العميل mark_note_done().
 #
 #  قبل ما تبدأ أي تحديث، افتح ملف «التطوير.md» — فيه:
 #    • آخر نقطة توقف (الإصدار + آخر commit + آخر بناء ناجح)
