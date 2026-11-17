@@ -21,7 +21,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.6.1"
+APP_VERSION = "2.6.2"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -3375,13 +3375,6 @@ class CenterApp:
             self.stat_card(row, *st).grid(row=0, column=i, sticky="nsew", padx=7, pady=4)
             row.grid_columnconfigure(i, weight=1, uniform="st")
 
-        try:
-            ins = compare_periods(*preset_periods("month"))["insights"][:3]
-        except Exception:
-            ins = []
-        if ins and self.can("compare", "view") and self.can("employees", "view"):
-            self.insight_box(self.content, "🧠 ملخص ذكي: هذا الشهر مقابل نفس الفترة من الشهر الماضي", ins).pack(fill="x", padx=31, pady=(4, 2))
-
         MC = {"workers": TEAL, "visits": BLUE, "maintenance": ORANGE, "employees": PURPLE, "cleaning": CYAN,
               "paper": AMBER, "toner": PINK, "purchases": "#16a34a", "attend": "#0ea5e9", "gov": "#be123c", "govstaff": "#0f766e", "compare": "#6366f1", "reports": GREEN}
         cards = [
@@ -6145,11 +6138,15 @@ if __name__ == "__main__":
 
 
 # ============================================================================
-#  ★ نقطة نهاية آخر تحديث (END OF LAST UPDATE) — الإصدار 2.6.1 ★
+#  ★ نقطة نهاية آخر تحديث (END OF LAST UPDATE) — الإصدار 2.6.2 ★
 # ----------------------------------------------------------------------------
 #  كل الكود فوق السطر ده خلص ومتّفق عليه. أي إضافة أو تعديل جديد يبدأ من هنا.
 #
-#  آخر حاجة اتعملت: ملاحظات وتعليمات الوحدات + تنبيه بصوت —
+#  آخر حاجة اتعملت: شيل «🧠 ملخص ذكي» من الصفحة الرئيسية —
+#    • show_home() : اتشال منها صندوق الملخص الذكي اللي كان بياخد مساحة فوق الكروت.
+#      (الملخص الذكي نفسه لسه موجود جوه صفحة «📈 مقارنة الفترات» — insight_box.)
+#
+#  قبل كده (2.6.1): تنبيه بصوت عند وصول ملاحظة جديدة —
 #    • جدول notes      : body/target/priority/created_by/created_at/status/done_by/done_at.
 #    • show_notes()    : شاشة «📢 ملاحظات» (إرسال + فلتر الكل/جديد/تم + تقديم + حذف + مفتاح الصوت).
 #    • build_notes_banner() : شريط أصفر أعلى أي صفحة على الوحدة المستهدفة + زر «✅ قدمها».
