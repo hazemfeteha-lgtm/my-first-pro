@@ -19,13 +19,13 @@ for line in io.open(SRC, encoding="utf-8-sig"):
         break
 
 # آخر نقطة توقف (حدّثها بعد كل بناء/رفع)
-LAST_COMMIT = "TBD"
-LAST_RUN = "TBD"
-EXE_BYTES = "TBD"
-EXE_MD5 = "TBD"
-PKG_NAME = "TBD"
-PKG_FILES = "TBD"
-SHOTS = "TBD"
+LAST_COMMIT = "2bcd3d0 — نسخة احتياطية كاملة (قاعدة + صور) + شاشة إدارة النسخ + استرجاع آمن (2.5.0)"
+LAST_RUN = "43988163270"
+EXE_BYTES = "16,329,854"
+EXE_MD5 = "1ebc1cc9d2d9b288679db628d0a03aad"
+PKG_NAME = "KhadamatMisr_v2.5.0_windows.zip"
+PKG_FILES = "582"
+SHOTS = "44"
 
 
 def structure(path):
