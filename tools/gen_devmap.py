@@ -19,13 +19,13 @@ for line in io.open(SRC, encoding="utf-8-sig"):
         break
 
 # آخر نقطة توقف (حدّثها بعد كل بناء/رفع)
-LAST_COMMIT = "d6054b0 — مسطرة تمرير + تنقّل بالأسهم في القائمة الجانبية (2.9.0)"
-LAST_RUN = "44111353147"
-EXE_BYTES = "16,374,755"
-EXE_MD5 = "0f6f7c4b399431b0aae8172a324da30d"
-PKG_NAME = "KhadamatMisr_v2.9.0_windows.zip"
-PKG_FILES = "574"
-SHOTS = "38"
+LAST_COMMIT = "29588a3 — مسطرتا شاشة المظهر + إصلاح ملء الشاشة المتكيّف + توحيد اسم موظفي الجهات (2.10.0)"
+LAST_RUN = "44117522119"
+EXE_BYTES = "16,378,830"
+EXE_MD5 = "734b7de17f9bfa1132e3a51c2671af7f"
+PKG_NAME = "KhadamatMisr_v2.10.0_windows.zip"
+PKG_FILES = "580"
+SHOTS = "44"
 
 
 def structure(path):
