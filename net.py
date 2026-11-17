@@ -112,6 +112,7 @@ _TABLE_PAGE = {
     "gov_staff": "govstaff",
     "inventory": "@inventory",
     "stock_in": "@inventory",
+    "notes": "notes",
     "users": "@admin",
     "audit_log": "@admin",
 }
@@ -170,6 +171,8 @@ def allowed(user, sql, params):
         return False, "جدول غير معروف: %s" % tbl
     if page == "@admin":
         return False, "هذا الجدول للمدير فقط"
+    if page == "notes" and not isw:
+        return True, ""              # الملاحظات تعليمات موجهة للوحدات: كل وحدة تقرأها
     if not isw:                         # قراءة: اسمح لو المستخدم يشوف أي صفحة مرتبطة بالجدول
         pages = _READ_PAGES.get(tbl)
         if pages and any(_level_ok(user.get("perms"), p, "view") for p in pages):
@@ -356,6 +359,13 @@ def list_backups(cfg):
     return data.get("rows", [])
 
 
+def mark_note_done(cfg, note_id):
+    """يعلّم ملاحظة/تعليمات كـ «تم» على الجهاز الرئيسي (من أي وحدة)."""
+    return _post(base_url(cfg) + "/note_done",
+                 {"token": cfg.get("token", ""), "user": CURRENT.get("username"),
+                  "station": cfg.get("station", ""), "id": int(note_id)}, timeout=20)
+
+
 def fetch_audit(cfg, limit=300):
     """يجلب سجل العمليات من السيرفر (للمدير فقط)."""
     data = _post(base_url(cfg) + "/audit",
@@ -456,7 +466,7 @@ class Server:
             perms = json.loads(r[2] or "{}")
         except ValueError:
             perms = {}
-        return {"is_admin": bool(r[0]), "perms": perms}
+        return {"username": username, "is_admin": bool(r[0]), "perms": perms}
 
     def _audit(self, username, station, action, table, detail):
         c = self._conn()
@@ -475,6 +485,30 @@ class Server:
             return None
         p = os.path.join(self.photos_dir, name)
         return p if os.path.isfile(p) else None
+
+    def _mark_note_done(self, note_id, username, station=""):
+        """يعلّم ملاحظة كـ «تم» (تنفيذ من أي وحدة). يرجع dict."""
+        with self.lock:
+            c = self._conn()
+            try:
+                cur = c.execute("UPDATE notes SET status='done', done_by=?, done_at=? "
+                                "WHERE id=? AND status<>'done'",
+                                (username or "", datetime.now().strftime("%Y-%m-%d %H:%M:%S"), int(note_id)))
+                c.commit()
+                if cur.rowcount:
+                    self.version += 1
+                    self.write_count += 1
+                    if station:
+                        self.stations[station] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    try:
+                        self._audit(username, station, "UPDATE", "notes", "note_done #%s" % note_id)
+                    except Exception:
+                        pass
+                return {"ok": True, "changed": cur.rowcount}
+            except sqlite3.Error as e:
+                return {"ok": False, "error": str(e)}
+            finally:
+                c.close()
 
     def _list_backups(self):
         """كل النسخ الاحتياطية الموجودة بجوار قاعدة البيانات (للمحطات)."""
@@ -707,6 +741,18 @@ class Server:
                         self._json({"ok": True, "rows": srv._list_backups()})
                     except Exception as e:
                         self._json({"ok": False, "error": str(e)})
+                    return
+                if u.path == "/note_done":
+                    user = srv._user(req.get("user"))
+                    if not user:
+                        self._json({"ok": False, "error": "المستخدم غير مصرح"})
+                        return
+                    try:
+                        nid = int(req.get("id"))
+                    except Exception:
+                        self._json({"ok": False, "error": "رقم الملاحظة غير صالح"})
+                        return
+                    self._json(srv._mark_note_done(nid, user.get("username"), req.get("station") or ""))
                     return
                 if u.path == "/audit":
                     user = srv._user(req.get("user"))

@@ -21,7 +21,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.5.0"
+APP_VERSION = "2.6.0"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -300,11 +300,16 @@ LEVELS = ["none", "view", "add", "edit"]
 LEVEL_LABEL = {"none": "ممنوع", "view": "عرض فقط", "add": "عرض + إضافة", "edit": "تعديل وحذف كامل"}
 PERM_PAGES = [("workers", "قاعدة بيانات العاملين"), ("visits", "زيارات المركز"), ("maintenance", "الصيانة"),
               ("cleaning", "جرد خامات النظافة"), ("paper", "جرد الأدوات الورقية"), ("toner", "جرد الأحبار"),
-              ("purchases", "المشتريات"), ("employees", "ملاحظات وأخطاء العاملين"), ("attend", "الحضور والانصراف"),
+              ("purchases", "المشتريات"), ("employees", "ملاحظات وأخطاء العاملين"), ("notes", "ملاحظات وتعليمات الوحدات"),
+              ("attend", "الحضور والانصراف"),
               ("govstaff", "قاعدة بيانات موظفي الجهات"), ("gov", "حضور وانصراف الجهات"), ("compare", "مقارنة الفترات"), ("reports", "استخراج وطباعة التقارير")]
 GOV_ENTITIES = ["السجل التجاري", "نيابة الأسرة", "المرور", "التأمينات الاجتماعية",
                 "الجوازات", "الشهر العقاري", "الأحوال المدنية", "الأدلة الجنائية"]
 VIEW_ONLY_PAGES = {"compare", "reports"}          # لا يوجد بهما إضافة/تعديل، فقط ممنوع أو مسموح
+# ملاحظات وتعليمات الوحدات (من السيرفر للوحدات، ومعها زر «قدمها»)
+NOTE_TARGET_ALL = "كل الوحدات"
+NOTE_PRIORITIES = ["عادية", "عاجلة"]
+NOTE_DEFAULT_TARGETS = ["الأمن", "الاستقبال", "الصيانة"]
 
 
 def hash_pw(pw, salt):
@@ -527,6 +532,11 @@ def init_db(con):
         unit_price REAL DEFAULT 0, total REAL DEFAULT 0, supplier TEXT DEFAULT '', invoice_no TEXT DEFAULT '',
         p_date TEXT NOT NULL, notes TEXT DEFAULT '', invoice_file TEXT DEFAULT '', stock_in_id INTEGER,
         created_at TEXT NOT NULL)""")
+    con.execute("""CREATE TABLE IF NOT EXISTS notes(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, body TEXT NOT NULL,
+        target TEXT DEFAULT '', priority TEXT DEFAULT 'عادية',
+        created_by TEXT DEFAULT '', created_at TEXT NOT NULL,
+        status TEXT DEFAULT 'new', done_by TEXT DEFAULT '', done_at TEXT DEFAULT '')""")
     con.execute("""CREATE TABLE IF NOT EXISTS users(
         id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE COLLATE NOCASE,
         pw_hash TEXT NOT NULL, salt TEXT NOT NULL, is_admin INTEGER DEFAULT 0, active INTEGER DEFAULT 1,
@@ -558,6 +568,7 @@ def init_db(con):
         "CREATE INDEX IF NOT EXISTS ix_gov_att ON gov_attendance(entity, att_date)",
         "CREATE INDEX IF NOT EXISTS ix_gov_staff ON gov_staff(entity, name)",
         "CREATE INDEX IF NOT EXISTS ix_purch ON purchases(category, p_date)",
+        "CREATE INDEX IF NOT EXISTS ix_notes ON notes(status, id)",
     ):
         con.execute(sql)
 
@@ -2154,6 +2165,7 @@ def load_icon(key, size=24):
 class CenterApp:
     NAV = [
         ("home", "🏠", "الرئيسية"),
+        ("notes", "📢", "ملاحظات"),
         ("workers", "👷", "قاعدة بيانات العاملين"),
         ("govstaff", "🗂️", "قاعدة بيانات موظفي الجهات"),
         ("attend", "🕒", "حضور وانصراف العاملين"),
@@ -2186,6 +2198,8 @@ class CenterApp:
         if self.user["is_admin"]:
             return "edit"
         lv = self.user["perms"].get(page, "none")
+        if page == "notes" and lv == "none":
+            lv = "view"          # الملاحظات تعليمات موجهة للوحدات: متاحة للعرض لكل وحدة
         if page in VIEW_ONLY_PAGES and lv in ("add", "edit"):
             lv = "view"
         return lv if lv in LEVELS else "none"
@@ -2918,6 +2932,10 @@ class CenterApp:
                     self._net_version = v
                     if self._can_auto_refresh():
                         self.go(self.active_key or "home")
+                    else:
+                        # حتى لو المستخدم بيكتب، نحدّث شريط الملاحظات الجديدة بس
+                        try: self.build_notes_banner()
+                        except Exception: pass
             except Exception:
                 NET_STATUS["ok"] = False
         if getattr(self, "_auto_job", None):
@@ -3081,7 +3099,9 @@ class CenterApp:
         for k, b in self.nav_buttons.items():
             b.config(bg=GOLD if k == key else NAVY_2, fg=NAVY if k == key else "white")
         self.clear_content()
+        self.build_notes_banner()
         if key == "home": self.show_home()
+        elif key == "notes": self.show_notes()
         elif key == "workers": self.show_workers()
         elif key == "visits": self.show_visits()
         elif key == "maintenance": self.show_maintenance()
@@ -3423,6 +3443,188 @@ class CenterApp:
         for v in (self.visit_person, self.visit_entity, self.visit_reason): v.set("")
         self.load_recent("visits", self.visits_tree)
         messagebox.showinfo("تم الحفظ", "تم تسجيل الزيارة بالتاريخ والوقت.")
+
+    # ---------- الملاحظات وتعليمات الوحدات ----------
+    def _station_name(self):
+        try:
+            return ((NET_CFG.get("station") if NET_CFG else "") or NET_STATION or "").strip()
+        except Exception:
+            return ""
+
+    def _note_for_me(self, target):
+        tgt = (target or "").strip()
+        if tgt in ("", NOTE_TARGET_ALL, "الكل", "الجميع"):
+            return True
+        st = self._station_name().lower()
+        return bool(st) and tgt.lower() == st
+
+    def _pending_notes(self, mine=True):
+        try:
+            with db() as con:
+                rows = con.execute(
+                    "SELECT id, body, target, priority, created_by, created_at "
+                    "FROM notes WHERE status='new' ORDER BY id DESC LIMIT 200").fetchall()
+        except Exception:
+            return []
+        if not mine:
+            return rows
+        return [r for r in rows if self._note_for_me(r[2])]
+
+    def build_notes_banner(self):
+        """شريط أعلى الشاشة: الملاحظات الجديدة الموجهة لهذه الوحدة مع زر «قدمها»."""
+        old = getattr(self, "_notes_banner", None)
+        if old is not None:
+            try: old.destroy()
+            except Exception: pass
+            self._notes_banner = None
+        pending = self._pending_notes(True)
+        if not pending:
+            return
+        kids = self.content.winfo_children()
+        bar = tk.Frame(self.content, bg=AMBER)
+        if kids:
+            bar.pack(fill="x", padx=24, pady=(10, 2), before=kids[0])
+        else:
+            bar.pack(fill="x", padx=24, pady=(10, 2))
+        head = tk.Frame(bar, bg=AMBER); head.pack(fill="x", padx=12, pady=(6, 2))
+        tk.Label(head, text=f"📢  ملاحظات وتعليمات جديدة ({len(pending)})", bg=AMBER, fg=NAVY,
+                 font=(FONT, 12, "bold"), anchor="e").pack(side="right")
+        for r in pending:
+            row = tk.Frame(bar, bg=AMBER); row.pack(fill="x", padx=12, pady=3)
+            tk.Button(row, text="✅ قدمها", command=lambda i=r[0]: self.mark_note_done(i),
+                      bg=GREEN, fg="white", activebackground=NAVY, activeforeground="white",
+                      relief="flat", bd=0, font=(FONT, 9, "bold"), padx=12, pady=3,
+                      cursor="hand2").pack(side="left", padx=(0, 10))
+            txt = (r[1] or "")
+            if (r[3] or "") == "عاجلة":
+                txt = "⚠️ " + txt
+            tk.Label(row, text=txt, bg=AMBER, fg=INK, font=(FONT, 11, "bold"),
+                     anchor="e", justify="right", wraplength=980).pack(side="right", fill="x", expand=True)
+        tk.Frame(bar, bg=AMBER, height=6).pack()
+        self._notes_banner = bar
+
+    def mark_note_done(self, note_id):
+        """يعلّم الملاحظة كـ «تم» (من أي وحدة)."""
+        try:
+            if netmod and NET_MODE == netmod.MODE_CLIENT:
+                res = netmod.mark_note_done(NET_CFG, note_id)
+                if not res.get("ok"):
+                    messagebox.showerror("خطأ", res.get("error") or "تعذر تحديث الملاحظة")
+                    return
+            else:
+                with db() as con:
+                    con.execute("UPDATE notes SET status='done', done_by=?, done_at=? WHERE id=?",
+                                (self.user["username"], now_stamp(), int(note_id)))
+        except Exception as ex:
+            messagebox.showerror("خطأ", f"تعذر تحديث الملاحظة:\n{ex}"); return
+        if getattr(self, "active_key", None) == "notes" and getattr(self, "notes_tree", None):
+            self.load_notes()
+        self.build_notes_banner()
+
+    def note_targets(self):
+        vals = [NOTE_TARGET_ALL]
+        st = self._station_name()
+        if st and st not in vals:
+            vals.append(st)
+        try:
+            if NET_SERVER and getattr(NET_SERVER, "stations", None):
+                for s in NET_SERVER.stations:
+                    if s and s not in vals:
+                        vals.append(s)
+        except Exception:
+            pass
+        for s in NOTE_DEFAULT_TARGETS:
+            if s not in vals:
+                vals.append(s)
+        return vals
+
+    def show_notes(self):
+        self.page_title("📢 ملاحظات وتعليمات الوحدات",
+                        "اكتب ملاحظة وحدد الوحدة — تظهر عندهم فورًا في شريط أعلى الشاشة مع زر «قدمها»، وتتحول هنا إلى «تم»")
+        lv = self.level("notes")
+        if lv in ("add", "edit"):
+            form = self.panel(); form.pack(fill="x", padx=24, pady=6)
+            self.note_body = tk.StringVar()
+            self.note_target = tk.StringVar(value=NOTE_TARGET_ALL)
+            self.note_prio = tk.StringVar(value=NOTE_PRIORITIES[0])
+            self.add_combo(form, "الوحدة المستهدفة", self.note_target, self.note_targets(), 0, 0, readonly=False)
+            self.add_combo(form, "الأولوية", self.note_prio, NOTE_PRIORITIES, 0, 1)
+            self.add_field(form, "نص الملاحظة", self.note_body, 1, 0, 620)
+            bx = tk.Frame(form, bg=WHITE); bx.grid(row=1, column=1, padx=14, pady=10, sticky="e")
+            self.btn(bx, "📢 إرسال الملاحظة", self.save_note).pack(side="right", padx=4)
+            self.btn(bx, "حذف المحدد", self.delete_note, RED).pack(side="right", padx=4)
+        sbar = tk.Frame(self.content, bg=BG); sbar.pack(fill="x", padx=24, pady=(4, 0))
+        self.note_filter = tk.StringVar(value="الكل")
+        tk.Label(sbar, text="عرض:", bg=BG, fg=TEXT, font=(FONT, 10, "bold")).pack(side="right", padx=6)
+        cb = ttk.Combobox(sbar, textvariable=self.note_filter, values=["الكل", "جديد", "تم"],
+                          state="readonly", width=10, justify="right")
+        cb.pack(side="right")
+        cb.bind("<<ComboboxSelected>>", lambda e: self.load_notes())
+        self.btn(sbar, "✅ قدّم المحدد", self.mark_note_done_selected, GREEN).pack(side="left", padx=6)
+        self.btn(sbar, "🔄 تحديث", self.load_notes, MUTED).pack(side="left", padx=6)
+        self.notes_tree = self.make_tree(self.content, ("body", "target", "prio", "status", "by", "time"),
+                                         ("نص الملاحظة", "الوحدة", "الأولوية", "الحالة", "قدّمها", "التاريخ والوقت"),
+                                         (400, 120, 80, 90, 120, 150), 11)
+        self.load_notes()
+
+    def load_notes(self):
+        if not getattr(self, "notes_tree", None):
+            return
+        try:
+            with db() as con:
+                rows = con.execute(
+                    "SELECT id, body, target, priority, created_by, created_at, status, done_by, done_at "
+                    "FROM notes ORDER BY id DESC LIMIT 500").fetchall()
+        except Exception as ex:
+            messagebox.showerror("خطأ", f"تعذر تحميل الملاحظات:\n{ex}"); return
+        flt = self.note_filter.get() if getattr(self, "note_filter", None) else "الكل"
+        self.notes_tree.delete(*self.notes_tree.get_children())
+        for n, r in enumerate(rows):
+            rid, body, target, prio, by, at, status, dby, dat = r
+            if flt == "جديد" and status == "done":
+                continue
+            if flt == "تم" and status != "done":
+                continue
+            done = (status == "done")
+            tags = ["odd"] if n % 2 else []
+            tags.append("good" if done else "bad")
+            self.notes_tree.insert("", "end", iid=str(rid), tags=tags, values=(
+                body or "", target or NOTE_TARGET_ALL, prio or NOTE_PRIORITIES[0],
+                "تم ✅" if done else "جديد",
+                (dby or "") if done else "",
+                fmt_stamp(dat) if done else fmt_stamp(at)))
+
+    def save_note(self):
+        body = self.note_body.get().strip()
+        if not body:
+            messagebox.showwarning("بيانات ناقصة", "اكتب نص الملاحظة أولًا."); return
+        target = self.note_target.get().strip()
+        if target == NOTE_TARGET_ALL:
+            target = ""
+        with db() as con:
+            con.execute("INSERT INTO notes(body,target,priority,created_by,created_at,status) VALUES(?,?,?,?,?,'new')",
+                        (body, target, self.note_prio.get(), self.user["username"], now_stamp()))
+        self.note_body.set("")
+        self.load_notes()
+        self.build_notes_banner()
+        messagebox.showinfo("تم الإرسال", "تم إرسال الملاحظة للوحدة المحددة.\nهتظهر عندهم فورًا مع زر «قدمها».")
+
+    def mark_note_done_selected(self):
+        sel = self.notes_tree.selection() if getattr(self, "notes_tree", None) else ()
+        if not sel:
+            messagebox.showinfo("تقديم الملاحظة", "اختر ملاحظة من الجدول أولًا."); return
+        self.mark_note_done(int(sel[0]))
+
+    def delete_note(self):
+        sel = self.notes_tree.selection() if getattr(self, "notes_tree", None) else ()
+        if not sel:
+            messagebox.showinfo("حذف الملاحظة", "اختر ملاحظة من الجدول أولًا."); return
+        if not messagebox.askyesno("حذف الملاحظة", "حذف الملاحظة المحددة نهائيًا؟", icon="warning"):
+            return
+        with db() as con:
+            con.execute("DELETE FROM notes WHERE id=?", (int(sel[0]),))
+        self.load_notes()
+        self.build_notes_banner()
 
     # ---------- الصيانة ----------
     def show_maintenance(self):
@@ -5790,7 +5992,8 @@ for _name, _lv, _pg in (
         ("save_permit", "add", "attend"), ("delete_permit", "edit", "attend"),
         ("save_absence", "add", "attend"), ("delete_absence", "edit", "attend"),
         ("import_att_data", "add", "attend"), ("import_gov_att", "add", "gov"),
-        ("gov_picker", "add", "gov"), ("gov_action_dialog", "add", "gov"), ("save_govstaff", "add", "govstaff")):
+        ("gov_picker", "add", "gov"), ("gov_action_dialog", "add", "gov"), ("save_govstaff", "add", "govstaff"),
+        ("save_note", "add", "notes"), ("delete_note", "edit", "notes")):
     setattr(CenterApp, _name, _guard(_lv, _pg)(getattr(CenterApp, _name)))
 
 
