@@ -8,7 +8,7 @@
 التشغيل: python center_management.py
 المتطلبات: pip install openpyxl
 """
-import os, sys, csv, json, html, calendar, bisect, shutil, subprocess, webbrowser, sqlite3, hashlib, hmac, secrets, functools, re, traceback, tkinter as tk
+import os, sys, csv, json, html, calendar, bisect, shutil, subprocess, webbrowser, sqlite3, hashlib, hmac, secrets, functools, re, traceback, tempfile, zipfile, tkinter as tk
 from pathlib import Path
 from contextlib import contextmanager
 from tkinter import ttk, messagebox, filedialog
@@ -21,7 +21,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.4.0"
+APP_VERSION = "2.5.0"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -615,6 +615,172 @@ def auto_backup(keep=14):
                    if f.startswith("center_management_") and len(f) == len(f"center_management_{tag}.db"))
     for f in daily[:-keep]:
         os.remove(os.path.join(BACKUP_DIR, f))
+
+
+FULL_PREFIX = "full_"
+
+
+def backup_full_now(tag=None):
+    """نسخة كاملة: قاعدة البيانات + كل صور العاملين والفواتير في ملف zip واحد.
+
+    تُحفظ داخل مجلد backups باسم full_التاريخ.zip. النسخة المتسقة من القاعدة
+    تُؤخذ عبر واجهة SQLite الرسمية، ثم تُضاف الصور من فولدر photos.
+    """
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    name = f"{FULL_PREFIX}{tag or datetime.now().strftime('%Y-%m-%d_%H%M%S')}.zip"
+    dest = os.path.join(BACKUP_DIR, name)
+    tmpdir = tempfile.mkdtemp(prefix="khm_full_")
+    try:
+        tmpdb = os.path.join(tmpdir, "center_management.db")
+        src, dst = sqlite3.connect(DB_PATH), sqlite3.connect(tmpdb)
+        try:
+            src.backup(dst)
+        finally:
+            dst.close(); src.close()
+        nphotos = 0
+        with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
+            z.write(tmpdb, "center_management.db")
+            if os.path.isdir(PHOTOS_DIR):
+                for root_, _, files in os.walk(PHOTOS_DIR):
+                    for fn in files:
+                        if os.path.basename(root_) == "thumbs":      # الصور المصغرة تُعاد تلقائيًا
+                            continue
+                        p = os.path.join(root_, fn)
+                        z.write(p, os.path.join("photos", os.path.relpath(p, PHOTOS_DIR)))
+                        nphotos += 1
+            info = (f"خدمات مصر — نسخة كاملة\n"
+                    f"الإصدار: {APP_VERSION}\n"
+                    f"التاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    f"الصور: {nphotos} ملف\n")
+            z.writestr("BACKUP_INFO.txt", info)
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    return dest
+
+
+def backup_kind(name):
+    """يصنّف ملف النسخة الاحتياطية: كاملة / أمان قبل الاسترجاع / يدوية / يومية."""
+    if name.startswith(FULL_PREFIX):
+        return "كاملة"
+    if name.startswith("center_management_before_restore_"):
+        return "أمان قبل الاسترجاع"
+    daily_len = len("center_management_YYYY-MM-DD.db")
+    if name.endswith(".db") and len(name) == daily_len:
+        return "يومية"
+    return "يدوية"
+
+
+def list_backups():
+    """كل النسخ الاحتياطية في مجلد backups مرتبة من الأحدث للأقدم."""
+    if not os.path.isdir(BACKUP_DIR):
+        return []
+    out = []
+    for fn in os.listdir(BACKUP_DIR):
+        if not (fn.endswith(".db") or fn.endswith(".zip")):
+            continue
+        p = os.path.join(BACKUP_DIR, fn)
+        if not os.path.isfile(p):
+            continue
+        try:
+            st = os.stat(p)
+        except OSError:
+            continue
+        out.append({"name": fn, "path": p, "size": st.st_size,
+                    "mtime": st.st_mtime, "kind": backup_kind(fn),
+                    "full": fn.endswith(".zip")})
+    out.sort(key=lambda r: r["mtime"], reverse=True)
+    return out
+
+
+def validate_backup_db(path):
+    """يتأكد أن الملف نسخة سليمة من قاعدة بيانات البرنامج. يرجع (ok, msg, عدد السجلات)."""
+    try:
+        chk = sqlite3.connect(path)
+        try:
+            tables = {r[0] for r in chk.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            ok = chk.execute("PRAGMA integrity_check").fetchone()[0]
+            nrec = sum(chk.execute(f"SELECT COUNT(*) FROM {_ident(t)}").fetchone()[0]
+                       for t in ("visits", "maintenance", "inventory", "employees") if t in tables)
+        finally:
+            chk.close()
+    except sqlite3.Error as ex:
+        return False, f"تعذر قراءة الملف كقاعدة بيانات:\n{ex}", 0
+    if not {"visits", "maintenance", "inventory"} <= tables or ok != "ok":
+        return False, "هذا الملف ليس نسخة سليمة من قاعدة بيانات البرنامج.", 0
+    return True, "", nrec
+
+
+def open_backup_archive(path):
+    """يفتح نسخة احتياطية (.db أو .zip). يرجع (db_file, photos_src, tmpdir).
+
+    tmpdir لازم يتحذف بعد الاستخدام (لو مش None). يرفع ValueError لو الملف غير صالح.
+    """
+    if not path.lower().endswith(".zip"):
+        return path, None, None
+    tmpdir = tempfile.mkdtemp(prefix="khm_restore_")
+    try:
+        with zipfile.ZipFile(path) as z:
+            names = z.namelist()
+            dbname = (next((n for n in names if os.path.basename(n) == "center_management.db"), None)
+                      or next((n for n in names if n.lower().endswith(".db")), None))
+            if not dbname:
+                raise ValueError("الملف المضغوط لا يحتوي على قاعدة بيانات البرنامج.")
+            z.extract(dbname, tmpdir)
+            db_file = os.path.join(tmpdir, dbname)
+            photos = [n for n in names if n.startswith("photos/") and not n.endswith("/")]
+            photos_src = None
+            if photos:
+                z.extractall(tmpdir, photos)
+                photos_src = os.path.join(tmpdir, "photos")
+    except Exception:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        raise
+    return db_file, photos_src, tmpdir
+
+
+def do_restore(db_file, photos_src=None):
+    """يستبدل قاعدة البيانات الحالية بالنسخة، مع نسخة أمان وحفظ المستخدمين.
+
+    photos_src: مجلد صور يُدمج (للنسخ الكاملة) أو None. يرجع مسار نسخة الأمان.
+    يرفع استثناء عند الفشل (بعد إرجاع البيانات الحالية).
+    """
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    safety = backup_now("before_restore_" + datetime.now().strftime("%Y%m%d_%H%M%S"))
+    try:
+        with db() as con:                   # المستخدمون وكلمات المرور لا تتغير بإدراج نسخة احتياطية
+            users_keep = con.execute("SELECT id,username,pw_hash,salt,is_admin,active,perms,created_at FROM users").fetchall()
+        src, dst = sqlite3.connect(db_file), sqlite3.connect(DB_PATH)
+        try:
+            src.backup(dst)
+        finally:
+            dst.close(); src.close()
+        try:
+            with db() as con:               # تهيئة/ترقية الجداول؛ لو فشلت نرجع للبيانات السابقة
+                if users_keep:
+                    con.execute("DELETE FROM users")
+                    con.executemany("INSERT INTO users(id,username,pw_hash,salt,is_admin,active,perms,created_at) "
+                                    "VALUES(?,?,?,?,?,?,?,?)", users_keep)
+        except sqlite3.Error:
+            src, dst = sqlite3.connect(safety), sqlite3.connect(DB_PATH)
+            try:
+                src.backup(dst)
+            finally:
+                dst.close(); src.close()
+            raise
+    except Exception:
+        raise
+    if photos_src and os.path.isdir(photos_src):     # دمج الصور بعد نجاح القاعدة (لا نحذف صورًا أحدث)
+        os.makedirs(PHOTOS_DIR, exist_ok=True)
+        for root_, _, files in os.walk(photos_src):
+            for fn in files:
+                s = os.path.join(root_, fn)
+                d = os.path.join(PHOTOS_DIR, os.path.relpath(s, photos_src))
+                try:
+                    os.makedirs(os.path.dirname(d), exist_ok=True)
+                    shutil.copy2(s, d)
+                except OSError:
+                    pass
+    return safety
 
 
 def db_info():
@@ -2122,6 +2288,7 @@ class CenterApp:
             um.add_command(label="👥  المستخدمون والصلاحيات", command=self.users_dialog)
             um.add_command(label="🌐  الشبكة (LAN)", command=self.net_dialog)
             um.add_command(label="📋  سجل العمليات", command=self.audit_dialog)
+            um.add_command(label="🗂️  النسخ الاحتياطية", command=self.backups_dialog)
         um.add_separator()
         um.add_command(label="🚪  تسجيل الخروج", command=self.logout)
         umb_win = hdr.create_window(0, 0, anchor="e" if en else "w", window=self.user_btn)
@@ -2178,7 +2345,7 @@ class CenterApp:
                   bg=NAVY_2, fg="#ffe0a3", activebackground=BLUE, activeforeground="white", relief="flat", bd=0,
                   font=(FONT, 10, "bold"), padx=18, pady=8, cursor="hand2").pack(side="bottom", fill="x", padx=10, pady=(0, 6))
         if self.user["is_admin"]:
-            tk.Button(self.sidebar, text="نسخة احتياطية   💾", command=self.manual_backup, anchor="e",
+            tk.Button(self.sidebar, text="النسخ الاحتياطية   🗂️", command=self.backups_dialog, anchor="e",
                       bg=NAVY, fg=GOLD, activebackground=BLUE, activeforeground="white", relief="flat", bd=0,
                       font=(FONT, 10, "bold"), padx=18, pady=9, cursor="hand2").pack(side="bottom", fill="x", padx=10, pady=(0, 14))
             tk.Button(self.sidebar, text="إدراج نسخة احتياطية   📂", command=self.restore_backup, anchor="e",
@@ -2269,71 +2436,65 @@ class CenterApp:
         self.root.title(T(f"{APP_NAME} - نظام إدارة المركز - {BRANCH}"))
         self.rebuild_ui()
 
-    def restore_backup(self):
-        """إدراج (استرجاع) نسخة احتياطية: تستبدل بيانات البرنامج الحالية ببيانات ملف .db مختار."""
+    def restore_backup(self, path=None):
+        """إدراج (استرجاع) نسخة احتياطية من ملف .db أو نسخة كاملة .zip.
+
+        لو path=None يفتح نافذة اختيار الملف. يرجع True عند نجاح الاسترجاع.
+        """
         if not self.need_admin():
-            return
+            return False
         if netmod and NET_MODE == netmod.MODE_CLIENT:
             messagebox.showinfo("إدراج نسخة احتياطية",
                                 "إدراج النسخ الاحتياطية يتم على الجهاز الرئيسي (السيرفر) فقط،\n"
                                 "لأن قاعدة البيانات كلها هناك.")
-            return
-        path = filedialog.askopenfilename(
-            title="اختر ملف النسخة الاحتياطية (.db)",
-            initialdir=BACKUP_DIR if os.path.isdir(BACKUP_DIR) else BASE,
-            filetypes=[("قاعدة بيانات", "*.db"), ("كل الملفات", "*.*")])
+            return False
+        if path is None:
+            path = filedialog.askopenfilename(
+                title="اختر ملف النسخة الاحتياطية (.db أو .zip)",
+                initialdir=BACKUP_DIR if os.path.isdir(BACKUP_DIR) else BASE,
+                filetypes=[("نسخة احتياطية", "*.db *.zip"), ("قاعدة بيانات", "*.db"),
+                           ("نسخة كاملة (قاعدة + صور)", "*.zip"), ("كل الملفات", "*.*")])
         if not path:
-            return
+            return False
         if os.path.abspath(path) == os.path.abspath(DB_PATH):
-            messagebox.showwarning("نفس الملف", "هذا هو ملف قاعدة البيانات الحالي نفسه. اختر ملف نسخة احتياطية آخر."); return
+            messagebox.showwarning("نفس الملف", "هذا هو ملف قاعدة البيانات الحالي نفسه. اختر ملف نسخة احتياطية آخر.")
+            return False
+        tmpdir, photos_src, db_file = None, None, path
         try:
-            chk = sqlite3.connect(path)
             try:
-                tables = {r[0] for r in chk.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-                ok = chk.execute("PRAGMA integrity_check").fetchone()[0]
-                nrec = sum(chk.execute(f"SELECT COUNT(*) FROM {_ident(t)}").fetchone()[0]
-                           for t in ("visits", "maintenance", "inventory", "employees") if t in tables)
-            finally:
-                chk.close()
-        except sqlite3.Error as ex:
-            messagebox.showerror("ملف غير صالح", f"تعذر قراءة الملف كقاعدة بيانات:\n{ex}"); return
-        if not {"visits", "maintenance", "inventory"} <= tables or ok != "ok":
-            messagebox.showerror("ملف غير صالح", "هذا الملف ليس نسخة سليمة من قاعدة بيانات البرنامج."); return
-        when = datetime.fromtimestamp(os.path.getmtime(path)).strftime("%d/%m/%Y %I:%M %p")
-        if not messagebox.askyesno(
-                "تأكيد إدراج النسخة الاحتياطية",
-                f"سيتم استبدال كل البيانات الحالية ببيانات هذه النسخة:\n{os.path.basename(path)}\n"
-                f"تاريخ الملف: {when}   |   عدد السجلات: {nrec}\n\n"
-                "سيحفظ البرنامج نسخة من بياناتك الحالية تلقائيًا قبل الاستبدال.\nهل تريد المتابعة؟", icon="warning"):
-            return
-        try:
-            safety = backup_now("before_restore_" + datetime.now().strftime("%Y%m%d_%H%M%S"))
-            with db() as con:                   # المستخدمون وكلمات المرور لا تتغير بإدراج نسخة احتياطية
-                users_keep = con.execute("SELECT id,username,pw_hash,salt,is_admin,active,perms,created_at FROM users").fetchall()
-            src, dst = sqlite3.connect(path), sqlite3.connect(DB_PATH)
+                db_file, photos_src, tmpdir = open_backup_archive(path)
+            except zipfile.BadZipFile as ex:
+                messagebox.showerror("ملف غير صالح", f"تعذر قراءة الملف المضغوط:\n{ex}")
+                return False
+            except ValueError as ex:
+                messagebox.showerror("ملف غير صالح", str(ex))
+                return False
+            ok, msg, nrec = validate_backup_db(db_file)
+            if not ok:
+                messagebox.showerror("ملف غير صالح", msg)
+                return False
+            when = datetime.fromtimestamp(os.path.getmtime(path)).strftime("%d/%m/%Y %I:%M %p")
+            extra = "\nالصور: سيتم دمج صور النسخة مع الصور الحالية." if photos_src else ""
+            if not messagebox.askyesno(
+                    "تأكيد إدراج النسخة الاحتياطية",
+                    f"سيتم استبدال كل البيانات الحالية ببيانات هذه النسخة:\n{os.path.basename(path)}\n"
+                    f"تاريخ الملف: {when}   |   عدد السجلات: {nrec}{extra}\n\n"
+                    "سيحفظ البرنامج نسخة من بياناتك الحالية تلقائيًا قبل الاستبدال.\nهل تريد المتابعة؟", icon="warning"):
+                return False
             try:
-                src.backup(dst)
-            finally:
-                dst.close(); src.close()
-            try:
-                with db() as con:               # تهيئة/ترقية الجداول للنسخة المُدرجة؛ لو فشلت نرجع للبيانات السابقة
-                    if users_keep:
-                        con.execute("DELETE FROM users")
-                        con.executemany("INSERT INTO users(id,username,pw_hash,salt,is_admin,active,perms,created_at) "
-                                        "VALUES(?,?,?,?,?,?,?,?)", users_keep)
-            except sqlite3.Error:
-                src, dst = sqlite3.connect(safety), sqlite3.connect(DB_PATH)
-                try:
-                    src.backup(dst)
-                finally:
-                    dst.close(); src.close()
-                raise
-        except Exception as ex:
-            messagebox.showerror("خطأ", f"تعذر إدراج النسخة (تم الإبقاء على بياناتك الحالية):\n{ex}"); return
-        messagebox.showinfo("تم", "تم إدراج النسخة الاحتياطية بنجاح.\n"
-                                  f"نسخة بياناتك السابقة محفوظة في:\n{safety}\n\n"
-                                  "ملاحظة: صور العاملين والفواتير في فولدر photos لا تتغير بهذه العملية.")
-        self.go("home")
+                safety = do_restore(db_file, photos_src)
+            except Exception as ex:
+                messagebox.showerror("خطأ", f"تعذر إدراج النسخة (تم الإبقاء على بياناتك الحالية):\n{ex}")
+                return False
+            messagebox.showinfo("تم", "تم إدراج النسخة الاحتياطية بنجاح.\n"
+                                      f"نسخة بياناتك السابقة محفوظة في:\n{safety}\n\n"
+                                      + ("تم أيضًا دمج صور العاملين والفواتير." if photos_src
+                                         else "ملاحظة: الصور في فولدر photos لا تتغير بهذه العملية."))
+            self.go("home")
+            return True
+        finally:
+            if tmpdir:
+                shutil.rmtree(tmpdir, ignore_errors=True)
 
     def logout(self):
         if not messagebox.askyesno("تسجيل الخروج", "هل تريد تسجيل الخروج؟"):
@@ -2536,12 +2697,23 @@ class CenterApp:
         self.btn(inner, "💾 حفظ", save, GREEN).pack(side="right", padx=6)
         self.btn(inner, "إلغاء", win.destroy, MUTED).pack(side="right", padx=6)
 
-    def manual_backup(self):
+    def manual_backup(self, full=None):
+        """إنشاء نسخة احتياطية الآن. full=None يسأل: كاملة (قاعدة + صور) أو سريعة (قاعدة فقط)."""
         if not self.need_admin():
             return
+        if full is None:
+            ans = messagebox.askyesnocancel(
+                "نسخة احتياطية",
+                "اختر نوع النسخة:\n\n"
+                "• «نعم» = نسخة كاملة (قاعدة البيانات + صور العاملين والفواتير)\n"
+                "• «لا» = نسخة سريعة (قاعدة البيانات فقط)\n\n"
+                "النسخة الكاملة بتاخد وقت وحجم أكبر، بس بتأمّن الصور كمان.")
+            if ans is None:
+                return
+            full = bool(ans)
         if netmod and NET_MODE == netmod.MODE_CLIENT:
             try:
-                res = netmod.request_backup(NET_CFG)
+                res = netmod.request_backup(NET_CFG, full=full)
                 if res.get("ok"):
                     messagebox.showinfo("نسخة احتياطية",
                                         f"تم إنشاء النسخة على الجهاز الرئيسي:\n{res.get('path')}")
@@ -2551,10 +2723,136 @@ class CenterApp:
                 messagebox.showerror("خطأ", f"تعذر الاتصال بالجهاز الرئيسي:\n{ex}")
             return
         try:
-            dest = backup_now()
-            messagebox.showinfo("نسخة احتياطية", f"تم حفظ نسخة من قاعدة البيانات:\n{dest}")
+            dest = backup_full_now() if full else backup_now()
+            messagebox.showinfo("نسخة احتياطية",
+                                ("تم حفظ نسخة كاملة (قاعدة + صور):\n" if full
+                                 else "تم حفظ نسخة من قاعدة البيانات:\n") + dest)
         except Exception as ex:
             messagebox.showerror("خطأ", f"تعذر إنشاء النسخة:\n{ex}")
+
+    def backups_dialog(self):
+        """شاشة إدارة النسخ الاحتياطية: عرض + إنشاء (سريعة/كاملة) + استرجاع + حذف + فتح المجلد."""
+        if not self.need_admin():
+            return
+        is_client = bool(netmod and NET_MODE == netmod.MODE_CLIENT)
+        win = self._dialog("النسخ الاحتياطية", "1000x680")
+        win.minsize(880, 560)
+
+        head = tk.Frame(win, bg=BG); head.pack(fill="x", padx=22, pady=(14, 0))
+        tk.Label(head, text="🗂️ النسخ الاحتياطية", bg=BG, fg=INK, font=(FONT, 16, "bold")).pack(anchor="e")
+        tk.Label(head, text="نسخة كاملة = قاعدة البيانات + صور العاملين والفواتير   |   نسخة سريعة = قاعدة البيانات فقط",
+                 bg=BG, fg=MUTED, font=(FONT, 9)).pack(anchor="e", pady=(2, 0))
+        if is_client:
+            tk.Label(head, text="⚠️ النسخ محفوظة على الجهاز الرئيسي — الاسترجاع يتم عليه فقط.",
+                     bg=BG, fg=RED, font=(FONT, 9, "bold")).pack(anchor="e", pady=(2, 0))
+
+        info = tk.Label(win, text="", bg=BG, fg=TEXT, font=(FONT, 10, "bold"))
+        info.pack(anchor="e", padx=24, pady=(6, 0))
+
+        wrap = tk.Frame(win, bg=BG); wrap.pack(fill="both", expand=True, padx=20, pady=8)
+        cols, heads, widths = ("kind", "when", "size", "name"), ("النوع", "التاريخ والوقت", "الحجم", "الملف"), (150, 190, 110, 420)
+        tree = ttk.Treeview(wrap, columns=cols, show="headings", height=13)
+        for c, h, w in zip(cols, heads, widths):
+            tree.heading(c, text=h); tree.column(c, width=w, anchor="e")
+        sb = ttk.Scrollbar(wrap, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=sb.set)
+        sb.pack(side="left", fill="y"); tree.pack(side="right", fill="both", expand=True)
+
+        by_iid = {}
+
+        def human(n):
+            return ("%.1f ميجا" % (n / 1048576) if n >= 1048576
+                    else ("%.0f كيلوبايت" % (n / 1024) if n >= 1024 else "%d بايت" % n))
+
+        def refresh():
+            tree.delete(*tree.get_children()); by_iid.clear()
+            try:
+                rows = netmod.list_backups(NET_CFG) if is_client else list_backups()
+            except Exception as ex:
+                info.config(text=f"تعذر الاتصال بالجهاز الرئيسي: {ex}", fg=RED); return
+            total = 0
+            for r in rows:
+                when = datetime.fromtimestamp(r["mtime"]).strftime("%d/%m/%Y %I:%M %p")
+                iid = tree.insert("", "end", values=(r["kind"], when, human(r["size"]), r["name"]))
+                by_iid[iid] = r; total += r["size"]
+            info.config(text="عدد النسخ: %d   |   الحجم الإجمالي: %s   |   المجلد: %s"
+                             % (len(rows), human(total), BACKUP_DIR if not is_client else "على الجهاز الرئيسي"), fg=TEXT)
+
+        def sel():
+            s = tree.selection()
+            return by_iid.get(s[0]) if s else None
+
+        def do_quick():
+            try:
+                if is_client:
+                    res = netmod.request_backup(NET_CFG, full=False)
+                    if not res.get("ok"):
+                        raise RuntimeError(res.get("error") or "تعذر إنشاء النسخة")
+                    messagebox.showinfo("نسخة سريعة", f"تم إنشاء نسخة على الجهاز الرئيسي:\n{res.get('path')}")
+                else:
+                    dest = backup_now()
+                    messagebox.showinfo("نسخة سريعة", f"تم حفظ نسخة من قاعدة البيانات:\n{dest}")
+                refresh()
+            except Exception as ex:
+                messagebox.showerror("خطأ", f"تعذر إنشاء النسخة:\n{ex}")
+
+        def do_full():
+            try:
+                if is_client:
+                    res = netmod.request_backup(NET_CFG, full=True)
+                    if not res.get("ok"):
+                        raise RuntimeError(res.get("error") or "تعذر إنشاء النسخة")
+                    messagebox.showinfo("نسخة كاملة", f"تم إنشاء نسخة كاملة على الجهاز الرئيسي:\n{res.get('path')}")
+                else:
+                    dest = backup_full_now()
+                    messagebox.showinfo("نسخة كاملة", f"تم حفظ نسخة كاملة (قاعدة + صور):\n{dest}")
+                refresh()
+            except Exception as ex:
+                messagebox.showerror("خطأ", f"تعذر إنشاء النسخة:\n{ex}")
+
+        def do_restore():
+            r = sel()
+            if not r:
+                messagebox.showinfo("استرجاع", "اختر نسخة من القائمة أولًا."); return
+            if is_client:
+                messagebox.showinfo("استرجاع", "الاسترجاع يتم على الجهاز الرئيسي (السيرفر) فقط."); return
+            self.restore_backup(r["path"]); refresh()
+
+        def do_delete():
+            r = sel()
+            if not r:
+                messagebox.showinfo("حذف", "اختر نسخة من القائمة أولًا."); return
+            if not messagebox.askyesno("حذف نسخة", f"حذف هذه النسخة نهائيًا؟\n\n{r['name']}", icon="warning"):
+                return
+            try:
+                os.remove(r["path"]); refresh()
+            except OSError as ex:
+                messagebox.showerror("خطأ", f"تعذر حذف الملف:\n{ex}")
+
+        def open_dir():
+            try:
+                if is_client:
+                    messagebox.showinfo("المجلد", "مجلد النسخ موجود على الجهاز الرئيسي.")
+                    return
+                os.makedirs(BACKUP_DIR, exist_ok=True)
+                if sys.platform == "win32":
+                    os.startfile(BACKUP_DIR)
+                elif sys.platform == "darwin":
+                    subprocess.Popen(["open", BACKUP_DIR])
+                else:
+                    subprocess.Popen(["xdg-open", BACKUP_DIR])
+            except Exception as ex:
+                messagebox.showerror("خطأ", f"تعذر فتح المجلد:\n{ex}")
+
+        bar = tk.Frame(win, bg=BG); bar.pack(fill="x", padx=20, pady=(0, 14))
+        self.btn(bar, "🗜️ نسخة كاملة (قاعدة + صور)", do_full, GREEN).pack(side="right", padx=5)
+        self.btn(bar, "💾 نسخة سريعة", do_quick, PRIMARY).pack(side="right", padx=5)
+        self.btn(bar, "♻️ استرجاع المختار", do_restore, GOLD).pack(side="right", padx=5)
+        self.btn(bar, "🗑️ حذف المختار", do_delete, RED).pack(side="right", padx=5)
+        self.btn(bar, "🔄 تحديث", refresh, MUTED).pack(side="left", padx=5)
+        self.btn(bar, "📂 فتح المجلد", open_dir, MUTED).pack(side="left", padx=5)
+        self.btn(bar, "إغلاق", win.destroy, MUTED).pack(side="left", padx=5)
+        refresh()
 
     # ---------- الشبكة (LAN) ----------
     def footer_text(self):
@@ -5517,6 +5815,7 @@ def start_net_server():
         verify=lambda u, p: authenticate_local(u, p)[0],
         photos_dir=PHOTOS_DIR,
         backup_fn=backup_now,
+        backup_full_fn=backup_full_now,
         log=_log,
     )
     try:
@@ -5595,13 +5894,17 @@ if __name__ == "__main__":
 
 
 # ============================================================================
-#  ★ نقطة نهاية آخر تحديث (END OF LAST UPDATE) — الإصدار 2.4.0 ★
+#  ★ نقطة نهاية آخر تحديث (END OF LAST UPDATE) — الإصدار 2.5.0 ★
 # ----------------------------------------------------------------------------
 #  كل الكود فوق السطر ده خلص ومتّفق عليه. أي إضافة أو تعديل جديد يبدأ من هنا.
 #
-#  آخر حاجة اتعملت: تشغيل البرنامج على شبكة محلية (LAN) — جهاز رئيسي «سيرفر»
-#  وباقي الأجهزة «محطات»، مع فحص صلاحيات على السيرفر وسجل عمليات وتحديث تلقائي
-#  وطابور أوفلاين (الملف net.py + أوضاع التشغيل في db()/authenticate()).
+#  آخر حاجة اتعملت: النسخ الاحتياطي الكامل + شاشة إدارة النسخ —
+#    • backup_full_now()  : نسخة كاملة (قاعدة البيانات + كل الصور) في ملف zip واحد.
+#    • do_restore()       : استرجاع موحّد (نسخة أمان + حفظ المستخدمين + دمج الصور).
+#    • list_backups()/backup_kind()/validate_backup_db() : عرض وتصنيف والتحقق.
+#    • backups_dialog()   : شاشة إدارة النسخ (عرض/إنشاء سريعة وكاملة/استرجاع/حذف/فتح المجلد).
+#    • restore_backup()   : بقت تقبل .db و .zip (النسخة الكاملة بترجّع الصور كمان).
+#    • net.py             : /backup بيدعم full + نقطة /backups لعرض النسخ من المحطة.
 #
 #  قبل ما تبدأ أي تحديث، افتح ملف «التطوير.md» — فيه:
 #    • آخر نقطة توقف (الإصدار + آخر commit + آخر بناء ناجح)

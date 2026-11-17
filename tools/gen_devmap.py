@@ -19,13 +19,13 @@ for line in io.open(SRC, encoding="utf-8-sig"):
         break
 
 # آخر نقطة توقف (حدّثها بعد كل بناء/رفع)
-LAST_COMMIT = "a18c303 — شبكة LAN (سيرفر + محطات) + فحص صلاحيات + سجل عمليات (2.4.0)"
-LAST_RUN = "43920656562"
-EXE_BYTES = "16,319,215"
-EXE_MD5 = "fe12d659bf0b413a919b1eb63f6373a2"
-PKG_NAME = "KhadamatMisr_v2.4.0_windows.zip"
-PKG_FILES = "581"
-SHOTS = "43"
+LAST_COMMIT = "TBD"
+LAST_RUN = "TBD"
+EXE_BYTES = "TBD"
+EXE_MD5 = "TBD"
+PKG_NAME = "TBD"
+PKG_FILES = "TBD"
+SHOTS = "TBD"
 
 
 def structure(path):
@@ -80,6 +80,9 @@ def main():
     w("- 2.4.0: **شبكة LAN** — جهاز رئيسي (سيرفر) + محطات، باسورد محدود لكل جهاز،")
     w("  فحص صلاحيات على السيرفر نفسه، سجل عمليات (مين أضاف إيه ومن أنهي جهاز)،")
     w("  تحديث تلقائي للشاشات، رفع/تنزيل الصور، وطابور أوفلاين لو الشبكة قطعت.")
+    w("- 2.5.0: **نسخة احتياطية كاملة + شاشة إدارة النسخ** — نسخة كاملة (قاعدة + صور) في zip،")
+    w("  استرجاع موحّد (نسخة أمان قبل الاستبدال + حفظ المستخدمين + دمج الصور)، وشاشة إدارة")
+    w("  النسخ (عرض/إنشاء سريعة وكاملة/استرجاع/حذف/فتح المجلد) + دعم كامل على الشبكة.")
     w("")
     w("### لسه (Pending) — ابدأ من هنا")
     w("")
@@ -147,6 +150,7 @@ def main():
     w("| المستخدمون | `users_dialog` · `user_edit_dialog` |")
     w("| الشبكة (LAN) | `net_dialog` · `refresh_net_status` · `auto_refresh` · `start_net_server` (خارج الكلاس) |")
     w("| سجل العمليات | `audit_dialog` · `net.audit_rows` · `net.fetch_audit` |")
+    w("| النسخ الاحتياطية | `backups_dialog` · `manual_backup` · `restore_backup` · `backup_now` · `backup_full_now` · `list_backups` · `do_restore` · `open_backup_archive` (خارج الكلاس) |")
     w("")
     w("## 5) قواعد ثابتة (لا تتغيّر)")
     w("")
@@ -156,9 +160,12 @@ def main():
     w("- بناء الـ exe على GitHub Actions فقط (`windows-latest`) — مفيش بناء ويندوز محلي.")
     w("- **الشبكة**: كل استعلامات قاعدة البيانات تمر من `db()` وحدها — في وضع المحطة تتحول لعميل شبكة.")
     w("  الصلاحيات تُفحص **على السيرفر** حسب جدول `users`، و`net_settings.json` لا يُرفع (فيه التوكن).")
+    w("- **النسخ الاحتياطي**: النسخة اليومية التلقائية = قاعدة البيانات فقط (حجم صغير، آخر 14 يوم).")
+    w("  النسخة الكاملة (`full_*.zip`) = قاعدة + صور. **قبل أي استرجاع** تُؤخذ نسخة أمان")
+    w("  (`before_restore_*`) والمستخدمون/كلمات المرور **لا تتغير**، والصور تُدمج (لا تُحذف صور أحدث).")
     w("- أي تعديل: عدّل في `KhadamatMisr/` → انسخ للـ `repo/` → commit → push `khadamat-misr` → نزّل الـ artifact → أعد بناء الحزمة واللقطات.")
     w("- اختبارات قبل التسليم: `verify_clock.py` (23) · `verify_new.py` (38) · `audit_pages.py` ·")
-    w("  `verify_net.py` (24) · `verify_lan_app.py` (16) · `verify_lan_2proc.py` (6).")
+    w("  `verify_net.py` (28) · `verify_lan_app.py` (16) · `verify_lan_2proc.py` (6) · `verify_backup.py` (29).")
     w("")
 
     io.open(OUT, "w", encoding="utf-8").write("\n".join(buf) + "\n")

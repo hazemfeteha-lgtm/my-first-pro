@@ -341,9 +341,19 @@ def server_info(cfg):
     return _get(base_url(cfg) + "/info?token=" + q, timeout=8)
 
 
-def request_backup(cfg):
+def request_backup(cfg, full=False):
     return _post(base_url(cfg) + "/backup",
-                 {"token": cfg.get("token", ""), "user": CURRENT.get("username")}, timeout=60)
+                 {"token": cfg.get("token", ""), "user": CURRENT.get("username"),
+                  "full": bool(full)}, timeout=300)
+
+
+def list_backups(cfg):
+    """يجلب قائمة النسخ الاحتياطية من الجهاز الرئيسي (للعرض في نافذة النسخ)."""
+    data = _post(base_url(cfg) + "/backups",
+                 {"token": cfg.get("token", ""), "user": CURRENT.get("username")}, timeout=30)
+    if not data.get("ok"):
+        raise sqlite3.OperationalError(data.get("error") or "تعذر جلب قائمة النسخ")
+    return data.get("rows", [])
 
 
 def fetch_audit(cfg, limit=300):
@@ -395,12 +405,13 @@ class Server:
     """خادم LAN صغير يملك قاعدة البيانات وينفّذ الاستعلامات القادمة من المحطات."""
 
     def __init__(self, db_path, token="", verify=None, photos_dir=None,
-                 backup_fn=None, info_fn=None, log=None):
+                 backup_fn=None, backup_full_fn=None, info_fn=None, log=None):
         self.db_path = db_path
         self.token = token or ""
         self.verify = verify            # callable(username, password) -> user dict | None
         self.photos_dir = photos_dir
-        self.backup_fn = backup_fn      # callable() -> backup path
+        self.backup_fn = backup_fn      # callable() -> backup path (قاعدة فقط)
+        self.backup_full_fn = backup_full_fn   # callable() -> backup path (قاعدة + صور)
         self.info_fn = info_fn          # callable() -> dict (db_mb, photos_mb, total)
         self.log = log or (lambda m: None)
         self.version = 0
@@ -464,6 +475,35 @@ class Server:
             return None
         p = os.path.join(self.photos_dir, name)
         return p if os.path.isfile(p) else None
+
+    def _list_backups(self):
+        """كل النسخ الاحتياطية الموجودة بجوار قاعدة البيانات (للمحطات)."""
+        bdir = os.path.join(os.path.dirname(os.path.abspath(self.db_path)), "backups")
+        if not os.path.isdir(bdir):
+            return []
+        out = []
+        for fn in os.listdir(bdir):
+            if not (fn.endswith(".db") or fn.endswith(".zip")):
+                continue
+            p = os.path.join(bdir, fn)
+            if not os.path.isfile(p):
+                continue
+            try:
+                st = os.stat(p)
+            except OSError:
+                continue
+            if fn.startswith("full_"):
+                kind = "كاملة"
+            elif fn.startswith("center_management_before_restore_"):
+                kind = "أمان قبل الاسترجاع"
+            elif fn.endswith(".db") and len(fn) == len("center_management_YYYY-MM-DD.db"):
+                kind = "يومية"
+            else:
+                kind = "يدوية"
+            out.append({"name": fn, "size": st.st_size, "mtime": st.st_mtime,
+                        "kind": kind, "full": fn.endswith(".zip")})
+        out.sort(key=lambda r: r["mtime"], reverse=True)
+        return out
 
     def _info(self):
         size = 0
@@ -648,8 +688,23 @@ class Server:
                         self._json({"ok": False, "error": "النسخ الاحتياطي للمدير فقط"})
                         return
                     try:
-                        path = srv.backup_fn() if srv.backup_fn else None
-                        self._json({"ok": True, "path": os.path.basename(path) if path else ""})
+                        full = bool(req.get("full"))
+                        fn = srv.backup_full_fn if full else srv.backup_fn
+                        if full and not srv.backup_full_fn:      # لو مش متاح نرجع للنسخة السريعة
+                            fn = srv.backup_fn
+                        path = fn() if fn else None
+                        self._json({"ok": True, "path": os.path.basename(path) if path else "",
+                                    "full": full})
+                    except Exception as e:
+                        self._json({"ok": False, "error": str(e)})
+                    return
+                if u.path == "/backups":
+                    user = srv._user(req.get("user"))
+                    if not (user and user.get("is_admin")):
+                        self._json({"ok": False, "error": "قائمة النسخ للمدير فقط"})
+                        return
+                    try:
+                        self._json({"ok": True, "rows": srv._list_backups()})
                     except Exception as e:
                         self._json({"ok": False, "error": str(e)})
                     return
