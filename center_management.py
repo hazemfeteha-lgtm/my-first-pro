@@ -22,7 +22,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.9.0"
+APP_VERSION = "2.10.0"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -1403,7 +1403,7 @@ def period_counts(start, end):
         res["الحضور والانصراف"] = one("SELECT COUNT(*) FROM attendance WHERE att_date BETWEEN ? AND ?", start, end)
         res["الغياب والتأخير"] = one("SELECT COUNT(*) FROM absences WHERE absence_date BETWEEN ? AND ?", start, end)
         res["حضور موظفي الجهات"] = one("SELECT COUNT(*) FROM gov_attendance WHERE att_date BETWEEN ? AND ?", start, end)
-        res["قاعدة موظفي الجهات (الإجمالي)"] = one("SELECT COUNT(*) FROM gov_staff")
+        res["قاعدة بيانات موظفي الجهات (الإجمالي)"] = one("SELECT COUNT(*) FROM gov_staff")
         res["قاعدة العاملين (الإجمالي)"] = one("SELECT COUNT(*) FROM employees")
     return res
 
@@ -1573,7 +1573,7 @@ def report_sections(kind, start, end):
         if kind in ("all", "govstaff"):
             rows = con.execute("""SELECT entity, name, job_title, phone, national_id, status, notes
                 FROM gov_staff ORDER BY entity, (status=?), name""", (STATUS_OFF,)).fetchall()
-            add("قاعدة موظفي الجهات", "قاعدة بيانات موظفي الجهات",
+            add("قاعدة بيانات موظفي الجهات", "قاعدة بيانات موظفي الجهات",
                 ["الجهة", "اسم الموظف", "الوظيفة", "الهاتف", "الرقم القومي", "الحالة", "ملاحظات"],
                 [24, 26, 20, 16, 20, 12, 32],
                 [(e, n, j or "", p or "", nid or "", st, nt or "") for e, n, j, p, nid, st, nt in rows],
@@ -2754,27 +2754,59 @@ class CenterApp:
         self.root.bind("<Control-f>", lambda e: (self.toggle_fullscreen(), "break")[1])
 
     def toggle_fullscreen(self):
-        """يكبّر البرنامج على الشاشة كلها أو يرجّعه لحجمه الطبيعي."""
+        """يكبّر البرنامج على الشاشة كلها أو يرجّعه لحجمه الطبيعي، ويعيد ضبط الواجهة تلقائيًا.
+
+        بعد التكبير/التصغير بنعيد ترتيب القائمة الجانبية والمحتوى على مقاس الشاشة الجديد،
+        فتبان الواجهة كاملة على أي مقاس شاشة أو رزوليوشن.
+        """
         self._fs = not getattr(self, "_fs", False)
+        win = sys.platform.startswith("win")
         try:
-            if _sys.platform.startswith("win") and self._fs:
-                self.root.attributes("-fullscreen", True)
-                return
-            if _sys.platform.startswith("win"):
-                self.root.attributes("-fullscreen", False)
-                self.fit_to_screen()
-                return
+            sw, sh = int(self.root.winfo_screenwidth()), int(self.root.winfo_screenheight())
+        except Exception:
+            sw = sh = 0
+        if self._fs:
+            ok = False
+            if win:
+                try:
+                    self.root.attributes("-fullscreen", True)
+                    ok = True
+                except Exception:
+                    ok = False
+            if not ok and sw and sh:
+                try:
+                    self.root.geometry("%dx%d+0+0" % (sw, sh))
+                except Exception:
+                    pass
+        else:
+            if win:
+                try:
+                    self.root.attributes("-fullscreen", False)
+                except Exception:
+                    pass
+            self.fit_to_screen()
+        # إعادة ضبط الواجهة بعد ما النافذة تستقر (فورًا + بعد لحظة للتأكيد)
+        self._relayout()
+        try:
+            self.root.after(120, self._relayout)
+            self.root.after(360, self._relayout)
         except Exception:
             pass
-        # على أي نظام تاني: نكبّر لمقاس الشاشة (يشتغل من غير مدير نوافذ)
+
+    def _relayout(self):
+        """يعيد ترتيب الواجهة (عرض القائمة الجانبية + المحتوى + تمرير القائمة) على المقاس الحالي."""
         try:
-            if self._fs:
-                sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
-                self.root.geometry("%dx%d+0+0" % (sw, sh))
-            else:
-                self.fit_to_screen()
+            self.root.update_idletasks()
         except Exception:
             pass
+        try:
+            want = self._side_width()
+            self._side_now = want
+            self.sidebar.config(width=want)
+        except Exception:
+            pass
+        self._fit_content()
+        self._fit_nav()
 
     def _scroll_page(self, direction):
         try:
@@ -2836,14 +2868,54 @@ class CenterApp:
         self.rebuild_ui()
 
     def appearance_dialog(self):
-        """شاشة المظهر: 8 ثيمات + نوع الخط + حجم الخط + شكل الأزرار + كثافة العرض."""
-        win = self._dialog("المظهر والثيمات", "940x780")
-        self._minsize(win, 840, 660)
+        """شاشة المظهر: 8 ثيمات + نوع الخط + حجم الخط + شكل الأزرار + كثافة العرض.
+
+        المحتوى جوه Canvas بمسطرتين (طولية + عرضية) عشان توصل لآخر الثيمات على أي مقاس شاشة.
+        """
+        win = self._dialog("المظهر والثيمات", "960x800")
+        self._minsize(win, 420, 320)
         tk.Label(win, text="🎨 المظهر والثيمات", bg=BG, fg=INK, font=(FONT, 18, "bold")).pack(anchor="e", padx=24, pady=(14, 2))
-        tk.Label(win, text="اختر ثيمًا كاملًا (ألوان + خط + شكل) — التغيير يُطبَّق ويُحفظ فورًا على هذا الجهاز.",
+        tk.Label(win, text="اختر ثيمًا كاملًا (ألوان + خط + شكل) — التغيير يُطبَّق ويُحفظ فورًا. استخدم المسطرتين للوصول لكل الثيمات.",
                  bg=BG, fg=MUTED, font=(FONT, 10)).pack(anchor="e", padx=26)
 
-        body = tk.Frame(win, bg=BG); body.pack(fill="both", expand=True, padx=18, pady=6)
+        # منطقة قابلة للتمرير (طولي + عرضي) عشان كل الثيمات تبان على أي مقاس شاشة
+        wrap = tk.Frame(win, bg=BG)
+        wrap.pack(fill="both", expand=True, padx=12, pady=6)
+        wrap.rowconfigure(0, weight=1)
+        wrap.columnconfigure(1, weight=1)
+        canvas = tk.Canvas(wrap, bg=BG, highlightthickness=0, bd=0)
+        vsb = ttk.Scrollbar(wrap, orient="vertical", command=canvas.yview)
+        hsb = ttk.Scrollbar(wrap, orient="horizontal", command=canvas.xview)
+        canvas.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        vsb.grid(row=0, column=0, sticky="ns")
+        canvas.grid(row=0, column=1, sticky="nsew")
+        hsb.grid(row=1, column=1, sticky="ew")
+        body = tk.Frame(canvas, bg=BG)
+        bid = canvas.create_window((0, 0), window=body, anchor="nw")
+
+        def fit(_=None):
+            try:
+                cw, ch = max(1, canvas.winfo_width()), max(1, canvas.winfo_height())
+                rw, rh = max(1, body.winfo_reqwidth()), max(1, body.winfo_reqheight())
+                canvas.configure(scrollregion=(0, 0, max(cw, rw), max(ch, rh)))
+                canvas.itemconfig(bid, width=max(cw, rw))
+                sc_lbl.config(wraplength=max(240, cw - 30))
+            except Exception:
+                pass
+
+        # عجلة الفأرة جوه النافذة (من غير ما تأثر على الشاشة الرئيسية)
+        def wheel(e):
+            num = getattr(e, "num", 0)
+            if num == 4:
+                step = -1
+            elif num == 5:
+                step = 1
+            else:
+                step = -1 if (getattr(e, "delta", 0) or 0) > 0 else 1
+            canvas.yview_scroll(step * 3, "units")
+            return "break"
+        for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            win.bind(seq, wheel, add="+")
 
         tk.Label(body, text="① الثيمات (8)", bg=BG, fg=INK, font=(FONT, 13, "bold"), anchor="e").pack(fill="x", pady=(6, 2))
         grid = tk.Frame(body, bg=BG); grid.pack(fill="x")
@@ -2902,11 +2974,17 @@ class CenterApp:
                       activeforeground="white", relief="flat", bd=0, font=(FONT, 10, "bold"),
                       padx=12, pady=7, cursor="hand2").pack(side="right", expand=True, fill="x", padx=4, pady=8)
 
-        tk.Label(body, text="⌨️ اختصارات: F1 الرئيسية · F2 ملاحظات · F3 العاملين · F4 موظفي الجهات · F5 حضور العاملين · "
-                            "F6 حضور الجهات · F7 الزيارات · F8 الصيانة · F9 المشتريات · F10 التقارير · F11 المقارنة · "
-                            "F12 المظهر · Alt+→/← التنقّل بين الأقسام · Esc إغلاق النافذة",
-                 bg=BG, fg=MUTED, font=(FONT, 9), anchor="e", justify="right", wraplength=860).pack(fill="x", pady=(10, 0))
-        self.btn(win, "إغلاق", win.destroy, MUTED).pack(pady=10)
+        sc_lbl = tk.Label(body, text="⌨️ اختصارات: F1 الرئيسية · F2 ملاحظات · F3 قاعدة بيانات العاملين · "
+                                     "F4 قاعدة بيانات موظفي الجهات · F5 حضور وانصراف العاملين · F6 حضور وانصراف الجهات · "
+                                     "F7 زيارات المركز · F8 الصيانة · F9 المشتريات · F10 استخراج وطباعة التقارير · "
+                                     "F11 مقارنة الفترات · F12 المظهر · Alt+→/← التنقّل بين الأقسام · Esc إغلاق النافذة",
+                            bg=BG, fg=MUTED, font=(FONT, 9), anchor="e", justify="right", wraplength=760)
+        sc_lbl.pack(fill="x", pady=(10, 6))
+
+        self.btn(win, "إغلاق", win.destroy, MUTED).pack(side="bottom", pady=10)
+        body.bind("<Configure>", fit)
+        canvas.bind("<Configure>", fit)
+        win.after(60, fit)
 
     def apply_appearance(self, theme=None, style=None, font=None, font_size=None, btn_style=None):
         """يطبّق الثيم/الخط/الحجم/شكل الأزرار، يحفظه في الإعدادات، ويعيد بناء الواجهة فورًا."""
@@ -5386,7 +5464,7 @@ class CenterApp:
                 ("cleaning", "جرد النظافة"), ("paper", "الجرد الورقي"), ("toner", "جرد الأحبار"),
                 ("stockin", "الوارد للمخازن"), ("employees", "ملاحظات وأخطاء العاملين"), ("permits", "إذونات الخروج"),
                 ("attendance", "الحضور والانصراف"), ("absences", "الغياب والتأخير"), ("govatt", "حضور موظفي الجهات"),
-                ("govstaff", "قاعدة موظفي الجهات"), ("workers", "قاعدة العاملين")]
+                ("govstaff", "قاعدة بيانات موظفي الجهات"), ("workers", "قاعدة العاملين")]
         need_pg = {"visits": ("visits",), "maintenance": ("maintenance",), "cleaning": ("cleaning",), "paper": ("paper",),
                    "toner": ("toner",), "stockin": ("cleaning", "paper", "toner"), "employees": ("employees",),
                    "permits": ("attend",), "attendance": ("attend",), "absences": ("attend",),
@@ -5412,7 +5490,7 @@ class CenterApp:
                      "• ملاحظات وأخطاء العاملين: تفاصيل كل بيان + ورقة ملخص بعدد ملاحظات وأخطاء كل عامل.",
                      "• إذونات الخروج والغياب والتأخير: تفاصيل كل بيان + ملخص بعدد إذونات وغياب وتأخير كل عامل.",
                      "• حضور موظفي الجهات: تفاصيل كل دخول وانصراف + ملخص لكل موظف + ملخص لكل جهة (للفترة المحددة).",
-                     "• قاعدة موظفي الجهات: كل موظفي الجهات الثماني بالوظيفة والهاتف والرقم القومي والحالة.",
+                     "• قاعدة بيانات موظفي الجهات: كل موظفي الجهات الثماني بالوظيفة والهاتف والرقم القومي والحالة.",
                      "• كل تقرير مكتوب فيه: خدمات مصر - فرع الإسكندرية.",
                      "• 🖨️ الطباعة: تفتح صفحة منسقة بلوجو خدمات مصر وخانات التوقيع وتبدأ نافذة الطباعة (ويمكن حفظها PDF).",
                      "• اضغط «معاينة الأعداد» لترى عدد السجلات في كل قسم قبل الاستخراج."]:
@@ -6510,11 +6588,11 @@ class CenterApp:
             messagebox.showerror("خطأ", f"تعذر إنشاء التقرير:\n{ex}"); return
         self.root.config(cursor="")
         total = sum(v for k, v in res.items()
-                    if k not in SUMMARY_ONLY + ("قاعدة العاملين", "قاعدة موظفي الجهات"))
+                    if k not in SUMMARY_ONLY + ("قاعدة العاملين", "قاعدة بيانات موظفي الجهات"))
         if self.report_type.get() == "workers":
             total = res.get("قاعدة العاملين", 0)
         if self.report_type.get() == "govstaff":
-            total = res.get("قاعدة موظفي الجهات", 0)
+            total = res.get("قاعدة بيانات موظفي الجهات", 0)
         msg = f"تم إنشاء التقرير بنجاح ({total} سجل):\n{path}"
         if total == 0:
             msg += "\n\nملاحظة: لا توجد سجلات في هذه الفترة."
@@ -6660,11 +6738,25 @@ if __name__ == "__main__":
 
 
 # ============================================================================
-#  ★ نقطة نهاية آخر تحديث (END OF LAST UPDATE) — الإصدار 2.9.0 ★
+#  ★ نقطة نهاية آخر تحديث (END OF LAST UPDATE) — الإصدار 2.10.0 ★
 # ----------------------------------------------------------------------------
 #  كل الكود فوق السطر ده خلص ومتّفق عليه. أي إضافة أو تعديل جديد يبدأ من هنا.
 #
-#  آخر حاجة اتعملت: مسطرة تمرير + تنقّل بالأسهم في القائمة الجانبية (2.9.0) —
+#  آخر حاجة اتعملت (2.10.0): شاشة المظهر بمسطرتين + ملء الشاشة المتكيّف + توحيد الاسم —
+#    • appearance_dialog() : محتوى شاشة «المظهر والثيمات» بقى جوه Canvas بمسطرتين
+#      (رأسية + أفقية) عشان توصل لآخر الثيمات على أي مقاس شاشة، + عجلة الفأرة جوه
+#      الشاشة، + سطر الاختصارات بيتلوّن تلقائيًا (wraplength متكيّف)، + حد أدنى
+#      للنافذة 420×320 بدل 840×660.
+#    • toggle_fullscreen() : ملء الشاشة بيعيد ضبط الواجهة فورًا (وعلى ويندوز
+#      attributes("-fullscreen") مع fallback لمقاس الشاشة) — فمفيش حاجة مختفية
+#      على أي رزوليوشن.
+#    • _relayout()         : دالة جديدة تعيد ترتيب القائمة الجانبية + المحتوى +
+#      تمرير القائمة بعد أي تغيير حجم/ملء شاشة.
+#    • توحيد الاسم «قاعدة بيانات موظفي الجهات» (نفس صيغة القائمة الجانبية) في:
+#      لستة أنواع التقارير + ملخص الأعداد + ورقة Excel + نص المساعدة +
+#      سطر الاختصارات في شاشة المظهر + ترجمة i18n.
+#
+#  قبل كده (2.9.0): مسطرة تمرير + تنقّل بالأسهم في القائمة الجانبية —
 #    • nav_wrap/nav_canvas/nav_vsb/nav_inner/nav_inner_id : أزرار القائمة الجانبية
 #      جوه Canvas بمسطرة تمرير رأسية، فبتوصل لآخر القائمة على أي مقاس شاشة.
 #    • _fit_nav()      : يضبط scrollregion + يخفي المسطرة تلقائيًا لو القائمة كلها بانية.

@@ -1030,6 +1030,7 @@ _DICT.update({
     'لا توجد سجلات حضور في المدة/الاختيار المحدد.': 'No attendance records for the selected period/filter.',
     'حضور موظفي الجهات': 'Entity staff attendance',
     'قاعدة موظفي الجهات': 'Entity staff database',
+    'قاعدة بيانات موظفي الجهات (الإجمالي)': 'Entity staff database (total)',
     'ملخص حضور الموظفين': 'Staff attendance summary',
     'ملخص الجهات': 'Entities summary',
     'تفاصيل حضور وانصراف موظفي الجهات': 'Entity staff check-in/out details',

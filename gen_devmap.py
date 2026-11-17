@@ -19,13 +19,13 @@ for line in io.open(SRC, encoding="utf-8-sig"):
         break
 
 # آخر نقطة توقف (حدّثها بعد كل بناء/رفع)
-LAST_COMMIT = "8d2fa9f — الواجهة تبان كاملة على أي شاشة + إصلاح اختصارات الكيبورد (2.8.0)"
-LAST_RUN = "44104691904"
-EXE_BYTES = "16,372,059"
-EXE_MD5 = "205bea10828b8f6cb663036f9564ce1f"
-PKG_NAME = "KhadamatMisr_v2.8.0_windows.zip"
-PKG_FILES = "559"
-SHOTS = "18"
+LAST_COMMIT = "d6054b0 — مسطرة تمرير + تنقّل بالأسهم في القائمة الجانبية (2.9.0)"
+LAST_RUN = "44111353147"
+EXE_BYTES = "16,374,755"
+EXE_MD5 = "0f6f7c4b399431b0aae8172a324da30d"
+PKG_NAME = "KhadamatMisr_v2.9.0_windows.zip"
+PKG_FILES = "574"
+SHOTS = "38"
 
 
 def structure(path):
@@ -103,6 +103,21 @@ def main():
     w("  (قائمة المستخدم + `Ctrl+F`). **إصلاح**: اختصارات `F1…F11` كانت `bind(\"F1\")` بدون أقواس")
     w("  فماكانتش شغّالة → `bind(\"<F1>\")`. نافذة `shortcuts_dialog` (`Shift+F1`). النوافذ المنبثقة")
     w("  بتتصغّر لو أكبر من الشاشة (`_clamp_size`/`_minsize`).")
+    w("- 2.9.0: **مسطرة تمرير + تنقّل بالأسهم في القائمة الجانبية** — أزرار القائمة بقت جوه")
+    w("  `Canvas` بمسطرة تمرير (`nav_wrap`/`nav_canvas`/`nav_vsb`/`nav_inner`)، فبتوصل لآخر")
+    w("  القائمة على أي مقاس شاشة. `_fit_nav` بيخفي المسطرة تلقائيًا لو القائمة كلها بانية.")
+    w("  `nav_move`/`_nav_reveal` ينقلوا التحديد بـ ↑↓ وينزّلوا القائمة للعنصر المختار.")
+    w("  `_menu_arrow` بيحمي الجداول/الخانات (لو التركيز على `Entry`/`Treeview`/… بيسيب المفاتيح لها).")
+    w("  عجلة الفأرة بتعمل تمرير للقائمة الجانبية كمان، وسطر جديد في `shortcuts_dialog`.")
+    w("- 2.10.0: **مسطرتا شاشة المظهر + ملء شاشة متكيّف + توحيد الاسم** — `appearance_dialog`")
+    w("  بقى محتواه جوه `Canvas` بمسطرة رأسية + أفقية (مع عجلة فأرة جوه الشاشة و`wraplength`")
+    w("  متكيّف)، فالوصول لآخر الثيمات على أي مقاس. `toggle_fullscreen` كان فيه **خطأ مخفي**:")
+    w("  `_sys.platform` والمتغير `_sys` **مش معرّف** (الخطأ كان بيتخضّ في `except`) فملء الشاشة")
+    w("  ماكانش شغّال صح على ويندوز → بقى `sys.platform` + خطة بديلة `geometry`، ودالة جديدة")
+    w("  `_relayout()` بتعيد ترتيب القائمة الجانبية + المحتوى + تمرير القائمة بعد أي تكبير/تصغير")
+    w("  (بتتنادى فورًا + بعد 120ms و360ms). وتوحيد الاسم **«قاعدة بيانات موظفي الجهات»** زي")
+    w("  القائمة الجانبية في: أنواع التقارير + `period_counts` + ورقة Excel + نص المساعدة +")
+    w("  سطر اختصارات شاشة المظهر + ترجمة `i18n`.")
     w("")
     w("### لسه (Pending) — ابدأ من هنا")
     w("")
@@ -167,8 +182,9 @@ def main():
     w("| ملاحظات الوحدات | `show_notes` · `load_notes` · `save_note` · `delete_note` · `mark_note_done` · `build_notes_banner` |")
     w("| المقارنة | `show_compare` · `run_compare` |")
     w("| التقارير | `show_reports` · `build_report` |")
-    w("| المظهر والثيمات | `appearance_dialog` · `apply_appearance` · `apply_theme` · `apply_font` · `apply_font_size` · `apply_btn_style` · `toggle_theme` · `bind_keys` · `cycle_page` |")
-    w("| ملاءمة الشاشات + الكيبورد | `fit_to_screen` · `_clamp_size` · `_minsize` · `_fit_content` · `_show_scrollbars` · `_side_width` · `_on_root_config` · `_on_wheel` · `toggle_fullscreen` · `shortcuts_dialog` · `_scroll_page` |")
+    w("| المظهر والثيمات | `appearance_dialog` (كانفس + مسطرة رأسية/أفقية) · `apply_appearance` · `apply_theme` · `apply_font` · `apply_font_size` · `apply_btn_style` · `toggle_theme` · `bind_keys` · `cycle_page` |")
+    w("| ملاءمة الشاشات + الكيبورد | `fit_to_screen` · `_clamp_size` · `_minsize` · `_fit_content` · `_show_scrollbars` · `_side_width` · `_on_root_config` · `_on_wheel` · `toggle_fullscreen` · `_relayout` · `shortcuts_dialog` · `_scroll_page` |")
+    w("| القائمة الجانبية (تمرير + أسهم) | `build_shell` (nav_canvas/nav_vsb/nav_inner) · `_fit_nav` · `nav_move` · `_nav_reveal` · `_menu_arrow` · `nav_hover` · `go` |")
     w("| المستخدمون | `users_dialog` · `user_edit_dialog` |")
     w("| الشبكة (LAN) | `net_dialog` · `refresh_net_status` · `auto_refresh` · `start_net_server` (خارج الكلاس) |")
     w("| سجل العمليات | `audit_dialog` · `net.audit_rows` · `net.fetch_audit` |")
@@ -190,10 +206,16 @@ def main():
     w("- **ملاءمة الشاشة**: النافذة بتتظبط في `fit_to_screen()` حسب مقاس الشاشة، والمحتوى جوه `Canvas`")
     w("  بشرائط تمرير — أي صفحة أطول/أعرض من الشاشة بتتمرّر، مفيش حاجة بتتقص. لو غيّرت حجم النافذة")
     w("  راجع `_on_root_config` + `_fit_content`.")
+    w("- **ملء الشاشة**: `toggle_fullscreen()` بينده `_relayout()` (فورًا + بعد 120ms و360ms) عشان")
+    w("  يعيد ترتيب القائمة الجانبية + المحتوى + تمرير القائمة على المقاس الجديد. لا تستعمل `_sys`")
+    w("  (مش معرّف) — استعمل `sys.platform`.")
+    w("- **شاشة المظهر**: `appearance_dialog` محتواه جوه `Canvas` بمسطرة رأسية + أفقية (`fit()` بتضبط")
+    w("  `scrollregion` + عرض نافذة الكانفس + `wraplength`)، وعجلة الفأرة مربوطة على النافذة نفسها.")
     w("- أي تعديل: عدّل في `KhadamatMisr/` → انسخ للـ `repo/` → commit → push `khadamat-misr` → نزّل الـ artifact → أعد بناء الحزمة واللقطات.")
     w("- اختبارات قبل التسليم: `verify_clock.py` (23) · `verify_new.py` (56) · `verify_responsive.py` ·")
-    w("  `audit_pages.py` · `verify_net.py` (34) · `verify_lan_app.py` (19) · `verify_lan_2proc.py` (6) ·")
-    w("  `verify_backup.py` (29) · `verify_backup_gui.py` (9) · `verify_notes_gui.py` (25).")
+    w("  `verify_navmenu.py` (22) · `verify_appearance_fs.py` (26 × 5 مقاسات) · `audit_pages.py` ·")
+    w("  `verify_net.py` (34) · `verify_lan_app.py` (19) ·")
+    w("  `verify_lan_2proc.py` (6) · `verify_backup.py` (29) · `verify_backup_gui.py` (9) · `verify_notes_gui.py` (25).")
     w("")
 
     io.open(OUT, "w", encoding="utf-8").write("\n".join(buf) + "\n")
