@@ -19,12 +19,12 @@ for line in io.open(SRC, encoding="utf-8-sig"):
         break
 
 # آخر نقطة توقف (حدّثها بعد كل بناء/رفع)
-LAST_COMMIT = "— (يتحدّث بعد الرفع)"
-LAST_RUN = "—"
-EXE_BYTES = "—"
-EXE_MD5 = "—"
+LAST_COMMIT = "321e17b — محرّك المظهر والثيمات (8 ثيمات من صور المستخدم) (2.7.0)"
+LAST_RUN = "44095044436"
+EXE_BYTES = "16,360,103"
+EXE_MD5 = "a7e4f4d6654bbae097f1ef769046dea8"
 PKG_NAME = "KhadamatMisr_v2.7.0_windows.zip"
-PKG_FILES = "—"
+PKG_FILES = "548"
 SHOTS = "11"
 
 
