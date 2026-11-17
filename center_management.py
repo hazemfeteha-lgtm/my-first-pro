@@ -22,12 +22,22 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.10.0"
+APP_VERSION = "2.11.0"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
 # عند تحويله إلى exe تُحفظ قاعدة البيانات بجوار ملف exe وليس في مجلد مؤقت
 BASE = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
+
+
+def _res_dir():
+    """مجلد الموارد المرفقة (img / fonts) — يشتغل مع الـ exe (onefile) والعادي."""
+    if getattr(sys, "frozen", False):
+        return getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+RES_DIR = _res_dir()
 DB_PATH = os.path.join(BASE, "center_management.db")
 CRASH_LOG = os.path.join(BASE, "crash.log")
 
@@ -90,7 +100,7 @@ MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو",
 FONT = "Tahoma"
 EMOJI_FONT = "Segoe UI Emoji"
 SETTINGS_PATH = os.path.join(BASE, "settings.json")
-# ===== الثيمات: ٨ أنماط مستخرجة من صور المستخدم (ملف zip) =====
+# ===== الثيمات: ٩ أنماط (٨ من صور المستخدم + نمط «ذهبي فاخر» من مواصفات التصميم) =====
 # كل ثيم يحدّد: تدرّج الشريط (H1→H2)، القائمة (NAVY_2)، الخلفية (BG)، الكروت (WHITE)،
 # اللون الأساسي (BLUE/PRIMARY)، الذهبي (GOLD)، ولون نص الشريط (HDR_TEXT/HDR_SUB) للثيمات الفاتحة.
 THEMES = {
@@ -142,15 +152,24 @@ THEMES = {
                    PURPLE="#a99bd6", TEAL="#3fbfa5", CYAN="#4dd0e1", AMBER="#d9b44a", PINK="#d98fb0",
                    ODD="#16211f", SOFT="#1a2724", SEL="#22463c", INK="#eef6f4", PRIMARY="#2f6b57",
                    H1="#283038", H2="#184840", ENTRY="#141e1c", HDR_TEXT="#ffffff", HDR_SUB="#d9b44a"),
+    # ٩) ذهبي فاخر — ليلي فاخر بلمسات ذهبية (من مواصفات تصميم المستخدم)
+    "gold": dict(NAVY="#14181F", NAVY_2="#14181F", BLUE="#C89D46", GOLD="#E0B963", BG="#1B2028", WHITE="#323844",
+                 TEXT="#FFFFFF", MUTED="#A0A8B5", LINE="#3A4150", RED="#E5484D", GREEN="#1D7A5F", ORANGE="#C89D46",
+                 PURPLE="#8C7A3E", TEAL="#2F8F74", CYAN="#3AA88A", AMBER="#E0B963", PINK="#C89D46",
+                 ODD="#2B313C", SOFT="#252A34", SEL="#3A4150", INK="#FFFFFF", PRIMARY="#C89D46",
+                 H1="#0E3B33", H2="#151B2E", ENTRY="#14181F", HDR_TEXT="#FFFFFF", HDR_SUB="#E0B963",
+                 BTN="gold", FONT_KEY="cairo",
+                 LOGIN_G1="#0E3B33", LOGIN_G2="#151B2E", LOGIN_BOX="#16232A",
+                 LOGIN_BTN=["#1D7A5F", "#8C7A3E", "#1B2B65"]),
 }
 
 THEME_LABELS = {"ocean": "أزرق بحري", "navy": "كحلي كلاسيكي", "sand": "بيج رملي",
                 "pearl": "فاتح بقائمة كحلية", "charcoal": "ليلي فحمي", "midnight": "ليلي كحلي",
-                "onyx": "ليلي أسود", "forest": "ليلي أخضر"}
+                "onyx": "ليلي أسود", "forest": "ليلي أخضر", "gold": "ذهبي فاخر"}
 
-# ترتيب عرض الثيمات الثمانية في شاشة المظهر
-THEME_ORDER = ["ocean", "navy", "sand", "pearl", "charcoal", "midnight", "onyx", "forest"]
-DARK_THEMES = ("charcoal", "midnight", "onyx", "forest")
+# ترتيب عرض الثيمات في شاشة المظهر
+THEME_ORDER = ["ocean", "navy", "sand", "pearl", "charcoal", "midnight", "onyx", "forest", "gold"]
+DARK_THEMES = ("charcoal", "midnight", "onyx", "forest", "gold")
 
 # أشكال الواجهة: كثافة العرض وحجم الأزرار (تُختار من نافذة الألوان والمظهر)
 UI_STYLES = {
@@ -161,14 +180,16 @@ UI_STYLES = {
 
 # ---- محرك الخطوط: نوع الخط وحجمه ----
 UI_FONTS = {"tahoma": "Tahoma", "segoe": "Segoe UI", "arial": "Arial",
-            "calibri": "Calibri", "verdana": "Verdana", "majalla": "Sakkal Majalla"}
+            "calibri": "Calibri", "verdana": "Verdana", "majalla": "Sakkal Majalla",
+            "cairo": "Cairo", "tajawal": "Tajawal"}
 FONT_LABELS = {"tahoma": "Tahoma (افتراضي)", "segoe": "Segoe UI", "arial": "Arial",
-               "calibri": "Calibri", "verdana": "Verdana", "majalla": "Sakkal Majalla"}
+               "calibri": "Calibri", "verdana": "Verdana", "majalla": "Sakkal Majalla",
+               "cairo": "Cairo (عربي عصري)", "tajawal": "Tajawal (عربي عصري)"}
 FONT_SIZES = {"small": 0.88, "normal": 1.0, "large": 1.16}
 FONT_SIZE_LABELS = {"small": "صغير", "normal": "عادي", "large": "كبير"}
 
-# ---- أشكال الأزرار: مملوء / محدّد / ناعم ----
-BTN_STYLES = {"solid": "مملوء", "outline": "محدّد", "soft": "ناعم"}
+# ---- أشكال الأزرار: مملوء / محدّد / ناعم / ذهبي فاخر ----
+BTN_STYLES = {"solid": "مملوء", "outline": "محدّد", "soft": "ناعم", "gold": "ذهبي فاخر"}
 
 
 def load_settings():
@@ -185,6 +206,47 @@ def save_settings(d):
             json.dump(d, f, ensure_ascii=False)
     except Exception:
         pass
+
+
+def register_bundled_fonts():
+    """يسجّل خطوط Cairo/Tajawal المرفقة في مجلد fonts عشان تبان في البرنامج.
+
+    ويندوز: AddFontResourceExW بصلاحية خاصة للعملية (مش بتتثبت على الجهاز).
+    لينكس: نسخ لمجلد خطوط المستخدم + fc-cache.
+    لو فشل أي حاجة، البرنامج بيكمّل عادي بخط النظام.
+    """
+    d = os.path.join(RES_DIR, "fonts")
+    if not os.path.isdir(d):
+        return []
+    files = [os.path.join(d, f) for f in sorted(os.listdir(d)) if f.lower().endswith((".ttf", ".otf"))]
+    if not files:
+        return []
+    if sys.platform.startswith("win"):
+        try:
+            import ctypes
+            gdi = ctypes.windll.gdi32
+            for f in files:
+                gdi.AddFontResourceExW(ctypes.c_wchar_p(f), 0x10, 0)   # FR_PRIVATE
+        except Exception:
+            pass
+        return files
+    try:
+        import shutil as _sh
+        tgt = os.path.join(os.path.expanduser("~"), ".local", "share", "fonts")
+        os.makedirs(tgt, exist_ok=True)
+        changed = False
+        for f in files:
+            t = os.path.join(tgt, os.path.basename(f))
+            try:
+                if not os.path.exists(t) or os.path.getsize(t) != os.path.getsize(f):
+                    _sh.copy2(f, t); changed = True
+            except Exception:
+                pass
+        if changed:
+            subprocess.run(["fc-cache", "-f", tgt], capture_output=True, timeout=40)
+    except Exception:
+        pass
+    return files
 
 
 def apply_theme(name):
@@ -229,6 +291,7 @@ def apply_btn_style(name):
     globals()["BTN_STYLE"] = name if name in BTN_STYLES else "solid"
 
 
+register_bundled_fonts()          # خطوط Cairo/Tajawal المرفقة (قبل اختيار الخط)
 apply_theme(load_settings().get("theme", "ocean"))
 apply_style(load_settings().get("style", "comfort"))
 apply_font(load_settings().get("font", "tahoma"))
@@ -262,6 +325,51 @@ def paint_gradient(cv, w, h, c1, c2, horizontal=True, step=4):
         else:
             cv.create_rectangle(0, i, w, i + step, outline="", fill=col, tags="grad")
     cv.tag_lower("grad")
+
+
+def gradient_button(parent, text, cmd, stops, width=300, height=48):
+    """زرار بتدرّج لوني حقيقي (Canvas) بإطار ذهبي ونص ذهبي — للثيمات الفاخرة (زي شاشة الدخول)."""
+    try:
+        base_bg = parent.cget("bg")
+    except Exception:
+        base_bg = "#14181F"
+    cv = tk.Canvas(parent, width=width, height=height, highlightthickness=0, bd=0,
+                   bg=base_bg, cursor="hand2", takefocus=True)
+    st = {"hover": False}
+
+    def _paint(_=None):
+        try:
+            cv.delete("all")
+            w = cv.winfo_width()
+            w = w if w and w > 1 else width          # قبل ما النافذة تظهر نستخدم المقاس المطلوب
+            h = cv.winfo_height()
+            h = h if h and h > 1 else height
+            cols = [lerp_color(c, "#ffffff", 0.20) for c in stops] if st["hover"] else list(stops)
+            n = max(1, len(cols) - 1)
+            seg = max(2, w // 90)
+            for i in range(0, w, seg):
+                t = i / max(1, w - 1)
+                idx = min(n - 1, int(t * n))
+                cv.create_rectangle(i, 0, i + seg + 1, h, outline="",
+                                    fill=lerp_color(cols[idx], cols[idx + 1], t * n - idx))
+            cv.create_rectangle(1, 1, w - 1, h - 1, outline=GOLD, width=1)
+            cv.create_text(w // 2, h // 2, text=text, fill=GOLD, font=(FONT, 13, "bold"))
+        except Exception:
+            pass
+
+    def _go(_=None):
+        try:
+            cmd()
+        except Exception:
+            pass
+    cv.bind("<Configure>", _paint)
+    cv.bind("<Enter>", lambda e: (st.update(hover=True), _paint()))
+    cv.bind("<Leave>", lambda e: (st.update(hover=False), _paint()))
+    cv.bind("<Button-1>", _go)
+    cv.bind("<Return>", _go)
+    cv.bind("<space>", _go)
+    cv.after(40, _paint)
+    return cv
 
 CLEANING_ITEMS = [
     "باركيه بليدج", "سيراميك بليدج", "جلانس", "ديتول",
@@ -2121,16 +2229,43 @@ def draw_bars(cv, labels, a_vals, b_vals):
 
 
 def login_dialog(root):
-    """نافذة تسجيل الدخول. ترجع بيانات المستخدم أو None لو أغلقها."""
+    """نافذة تسجيل الدخول. ترجع بيانات المستخدم أو None لو أغلقها.
+
+    لو الثيم الحالي بيدعم الهوية الفاخرة (LOGIN_G1/LOGIN_G2) بنرسم خلفية متدرّجة
+    وصندوق داكن بإطار ذهبي وزرار دخول متدرّج — زي مواصفات التصميم.
+    """
     win = tk.Toplevel(root)
     win.title(f"{APP_NAME} - تسجيل الدخول"); win.configure(bg=BG); win.resizable(False, False)
-    w, h = 420, 470
+    w, h = 440, 560
     try:
-        h = min(h, max(340, int(win.winfo_screenheight()) - 100))
+        h = min(h, max(360, int(win.winfo_screenheight()) - 80))
+        w = min(w, max(340, int(win.winfo_screenwidth()) - 40))
     except Exception:
         pass
-    win.geometry(f"{w}x{h}+{max(0, (win.winfo_screenwidth() - w) // 2)}+{max(0, (win.winfo_screenheight() - h) // 2 - 30)}")
+    win.geometry(f"{w}x{h}+{max(0, (win.winfo_screenwidth() - w) // 2)}+{max(0, (win.winfo_screenheight() - h) // 2 - 20)}")
     res = {"user": None, "tries": 0, "retry": False}
+
+    # ---- الهوية الفاخرة: خلفية متدرّجة + صندوق داكن (تقريب الزجاج) + زرار متدرّج ----
+    G1, G2 = globals().get("LOGIN_G1"), globals().get("LOGIN_G2")
+    fancy = bool(G1 and G2)
+    PBG = (globals().get("LOGIN_BOX") or WHITE) if fancy else BG
+    if fancy:
+        bgcv = tk.Canvas(win, highlightthickness=0, bd=0, bg=G1)
+        bgcv.place(x=0, y=0, relwidth=1, relheight=1)
+        bgcv.tk.call("lower", bgcv._w)          # خلفية تحت كل العناصر
+
+        def _paint_bg(_=None):
+            try:
+                paint_gradient(bgcv, max(1, win.winfo_width()), max(1, win.winfo_height()),
+                               G1, G2, horizontal=False, step=3)
+            except Exception:
+                pass
+        win.bind("<Configure>", _paint_bg, add="+")
+        win.after(30, _paint_bg)
+        shell = tk.Frame(win, bg=PBG, highlightbackground=GOLD, highlightthickness=1)
+        shell.pack(fill="both", expand=True, padx=36, pady=28)
+    else:
+        shell = win
 
     def switch_lang():
         i18n.set_lang("ar" if i18n.is_en() else "en")
@@ -2139,28 +2274,29 @@ def login_dialog(root):
         win.destroy()
 
     lang_btn = tk.Button(win, text="🌐  العربية" if i18n.is_en() else "🌐  English", command=switch_lang,
-                         bg=BG, fg=PRIMARY, activebackground=SOFT, relief="flat", bd=0,
+                         bg=PBG, fg=PRIMARY, activebackground=SOFT, relief="flat", bd=0,
                          font=(FONT, 9, "bold"), padx=8, pady=3, cursor="hand2")
     lang_btn.place(relx=0.04 if i18n.is_en() else 0.96, y=12, anchor="nw" if i18n.is_en() else "ne")
     try:
         win._logo = tk.PhotoImage(data="".join(LOGO_B64))
-        tk.Label(win, image=win._logo, bg="white", highlightbackground=GOLD, highlightthickness=3).pack(pady=(26, 8))
+        tk.Label(shell, image=win._logo, bg="white", highlightbackground=GOLD, highlightthickness=3).pack(pady=(18, 8))
     except Exception:
         pass
-    tk.Label(win, text=APP_NAME, bg=BG, fg=INK, font=(FONT, 20, "bold")).pack()
-    tk.Label(win, text=f"نظام إدارة المركز - فرع {BRANCH}", bg=BG, fg=MUTED, font=(FONT, 10)).pack(pady=(0, 14))
+    tk.Label(shell, text=APP_NAME, bg=PBG, fg=INK, font=(FONT, 20, "bold")).pack()
+    tk.Label(shell, text=f"نظام إدارة المركز - فرع {BRANCH}", bg=PBG, fg=MUTED, font=(FONT, 10)).pack(pady=(0, 14))
     if netmod and NET_MODE == netmod.MODE_CLIENT:
-        tk.Label(win, text=f"🖧  الجهاز الرئيسي: {NET_CFG.get('server_host') or '؟'}   •   المحطة: {NET_STATION}",
-                 bg=BG, fg=PRIMARY, font=(FONT, 9, "bold")).pack(pady=(0, 6))
-    box = tk.Frame(win, bg=WHITE, highlightbackground=LINE, highlightthickness=1); box.pack(fill="x", padx=36, pady=4)
-    tk.Label(box, text="اسم المستخدم", bg=WHITE, fg=TEXT, font=(FONT, 10, "bold"), anchor="e").pack(fill="x", padx=16, pady=(14, 3))
+        tk.Label(shell, text=f"🖧  الجهاز الرئيسي: {NET_CFG.get('server_host') or '؟'}   •   المحطة: {NET_STATION}",
+                 bg=PBG, fg=PRIMARY, font=(FONT, 9, "bold")).pack(pady=(0, 6))
+    box = tk.Frame(shell, bg=PBG, highlightbackground=GOLD if fancy else LINE, highlightthickness=1)
+    box.pack(fill="x", padx=30, pady=4)
+    tk.Label(box, text="اسم المستخدم", bg=PBG, fg=TEXT, font=(FONT, 10, "bold"), anchor="e").pack(fill="x", padx=16, pady=(14, 3))
     u_var, p_var = tk.StringVar(), tk.StringVar()
     ue = tk.Entry(box, textvariable=u_var, justify="right", font=(FONT, 12), relief="solid", bd=1,
                   bg=ENTRY, fg=TEXT, insertbackground=TEXT); ue.pack(fill="x", padx=16)
-    tk.Label(box, text="كلمة المرور", bg=WHITE, fg=TEXT, font=(FONT, 10, "bold"), anchor="e").pack(fill="x", padx=16, pady=(10, 3))
+    tk.Label(box, text="كلمة المرور", bg=PBG, fg=TEXT, font=(FONT, 10, "bold"), anchor="e").pack(fill="x", padx=16, pady=(10, 3))
     pe = tk.Entry(box, textvariable=p_var, show="●", justify="right", font=(FONT, 12), relief="solid", bd=1,
                   bg=ENTRY, fg=TEXT, insertbackground=TEXT); pe.pack(fill="x", padx=16, pady=(0, 14))
-    msg = tk.Label(win, text="", bg=BG, fg=RED, font=(FONT, 10, "bold")); msg.pack(pady=(8, 0))
+    msg = tk.Label(shell, text="", bg=PBG, fg=RED, font=(FONT, 10, "bold")); msg.pack(pady=(8, 0))
 
     def attempt(_=None):
         if not u_var.get().strip() or not p_var.get():
@@ -2178,9 +2314,13 @@ def login_dialog(root):
         msg.config(text="هذا الحساب موقوف. راجع المدير." if why == "disabled"
                    else f"اسم المستخدم أو كلمة المرور غير صحيحة. (المحاولة {res['tries']} من 5)")
         p_var.set(""); pe.focus_set()
-    tk.Button(win, text="🔓  دخول", command=attempt, bg=PRIMARY, fg="white", activebackground=BLUE, activeforeground="white",
-              relief="flat", font=(FONT, 12, "bold"), padx=30, pady=8, cursor="hand2").pack(pady=14)
-    tk.Label(win, text=f"تصميم وتطوير: {DESIGNER}   •   الإصدار {APP_VERSION}", bg=BG, fg=MUTED, font=(FONT, 8)).pack(side="bottom", pady=8)
+    gstops = globals().get("LOGIN_BTN")
+    if fancy and gstops:
+        gradient_button(shell, "🔓  دخول", attempt, gstops, width=300, height=48).pack(pady=14)
+    else:
+        tk.Button(shell, text="🔓  دخول", command=attempt, bg=PRIMARY, fg="white", activebackground=BLUE, activeforeground="white",
+                  relief="flat", font=(FONT, 12, "bold"), padx=30, pady=8, cursor="hand2").pack(pady=14)
+    tk.Label(shell, text=f"تصميم وتطوير: {DESIGNER}   •   الإصدار {APP_VERSION}", bg=PBG, fg=MUTED, font=(FONT, 8)).pack(side="bottom", pady=8)
     ue.bind("<Return>", lambda e: pe.focus_set()); pe.bind("<Return>", attempt)
     win.protocol("WM_DELETE_WINDOW", win.destroy)
     win.lift(); win.focus_force(); ue.focus_set()
@@ -2917,7 +3057,7 @@ class CenterApp:
         for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
             win.bind(seq, wheel, add="+")
 
-        tk.Label(body, text="① الثيمات (8)", bg=BG, fg=INK, font=(FONT, 13, "bold"), anchor="e").pack(fill="x", pady=(6, 2))
+        tk.Label(body, text=f"① الثيمات ({len(THEME_ORDER)})", bg=BG, fg=INK, font=(FONT, 13, "bold"), anchor="e").pack(fill="x", pady=(6, 2))
         grid = tk.Frame(body, bg=BG); grid.pack(fill="x")
         for i, key in enumerate(THEME_ORDER):
             pal = THEMES[key]
@@ -2937,6 +3077,9 @@ class CenterApp:
                       bg=GREEN if on else pal["BLUE"], fg="white", activebackground=GOLD, activeforeground=INK,
                       relief="flat", bd=0, font=(FONT, 9, "bold"), padx=10, pady=4,
                       cursor="hand2").pack(pady=(2, 6))
+
+        tk.Label(body, text="ملاحظة: ثيم «ذهبي فاخر» بيغيّر شكل الأزرار والخط معاه تلقائيًا (هوية كاملة).",
+                 bg=BG, fg=MUTED, font=(FONT, 9), anchor="e").pack(fill="x", pady=(2, 0))
 
         tk.Label(body, text="② نوع الخط", bg=BG, fg=INK, font=(FONT, 13, "bold"), anchor="e").pack(fill="x", pady=(12, 2))
         frow = tk.Frame(body, bg=WHITE, highlightbackground=LINE, highlightthickness=1); frow.pack(fill="x")
@@ -2991,6 +3134,12 @@ class CenterApp:
         cfg = load_settings()
         if theme:
             apply_theme(theme); cfg["theme"] = theme
+            tdef = THEMES.get(theme, {})
+            # بعض الثيمات بتحمل هويتها كاملة (شكل الأزرار + الخط) — تُطبَّق لو المستخدم مش حدّدها بنفسه
+            if not btn_style and tdef.get("BTN"):
+                apply_btn_style(tdef["BTN"]); cfg["btn_style"] = tdef["BTN"]
+            if not font and tdef.get("FONT_KEY"):
+                apply_font(tdef["FONT_KEY"]); cfg["font"] = tdef["FONT_KEY"]
         if style:
             apply_style(style); cfg["style"] = style
         if font:
@@ -3724,6 +3873,10 @@ class CenterApp:
         elif BTN_STYLE == "soft":
             cfg = dict(bg=lerp_color(WHITE, color, 0.16), fg=color, activebackground=color,
                        activeforeground="white", relief="flat")
+        elif BTN_STYLE == "gold":
+            # ذهبي فاخر: تعبئة داكنة + إطار ذهبي + نص ذهبي (عند المرور يظهر لون الزر الأصلي)
+            cfg = dict(bg=WHITE, fg=GOLD, activebackground=color, activeforeground=NAVY_2,
+                       highlightbackground=GOLD, highlightcolor=GOLD, highlightthickness=1, relief="flat")
         else:
             cfg = dict(bg=color, fg="white", activebackground=BLUE, activeforeground="white", relief="flat")
         cfg.update(kw)
@@ -6738,11 +6891,37 @@ if __name__ == "__main__":
 
 
 # ============================================================================
-#  ★ نقطة نهاية آخر تحديث (END OF LAST UPDATE) — الإصدار 2.10.0 ★
+#  ★ نقطة نهاية آخر تحديث (END OF LAST UPDATE) — الإصدار 2.11.0 ★
 # ----------------------------------------------------------------------------
 #  كل الكود فوق السطر ده خلص ومتّفق عليه. أي إضافة أو تعديل جديد يبدأ من هنا.
 #
-#  آخر حاجة اتعملت (2.10.0): شاشة المظهر بمسطرتين + ملء الشاشة المتكيّف + توحيد الاسم —
+#  آخر حاجة اتعملت (2.11.0): ثيم «ذهبي فاخر» (Luxury Gold) من مواصفات تصميم المستخدم —
+#    • THEMES["gold"]  : ثيم ليلي فاخر بالألوان المطلوبة بالظبط:
+#        BG #1B2028 (خلفية اللوحة)   NAVY/NAVY_2 #14181F (الشريط العلوي + القائمة)
+#        WHITE #323844 (تعبئة البطاقات) SOFT #252A34 (نهاية التدرّج) ENTRY #14181F (حقول الإدخال)
+#        GOLD #E0B963 (الذهبي الأساسي) PRIMARY/BLUE #C89D46 (الذهبي الثانوي)
+#        TEXT #FFFFFF  MUTED #A0A8B5  LINE #3A4150
+#        H1 #0E3B33 → H2 #151B2E (تدرّج الشريط = تدرّج شاشة الدخول)
+#        + مفاتيح خاصة: BTN="gold" / FONT_KEY="cairo" / LOGIN_G1,LOGIN_G2,LOGIN_BOX,LOGIN_BTN.
+#    • BTN_STYLES["gold"] : شكل أزرار جديد «ذهبي فاخر» — تعبئة داكنة + إطار ذهبي 1px +
+#      نص ذهبي، وعند المرور يظهر لون الزر الأصلي (أخضر للحفظ، أحمر للحذف… إلخ).
+#    • apply_appearance() : أي ثيم بيعرّف BTN/FONT_KEY بيطّبق هويته كاملة (أزرار + خط)
+#      لو المستخدم مش حدّدهم بنفسه → «الثيم بيغيّر لون الواجهة والأزرار».
+#    • gradient_button()  : دالة جديدة ترسم زرار بتدرّج لوني حقيقي على Canvas بإطار ذهبي
+#      ونص ذهبي (تدرّج أخضر ← ذهبي ← كحلي زي مواصفات زر الدخول).
+#    • login_dialog()     : في الثيمات اللي بتدعم الهوية الفاخرة — خلفية متدرّجة
+#      (Canvas بيتعاد رسمه مع أي تغيير حجم) + صندوق داكن «زجاجي» بإطار ذهبي + زرار دخول
+#      متدرّج. الثيمات التانية زي ما هي بالظبط.
+#    • الخطوط المرفقة     : مجلد fonts/ فيه Cairo (Regular+Bold) و Tajawal (Regular+Bold)
+#      برخصة OFL، + register_bundled_fonts() يسجّلها تلقائيًا عند التشغيل
+#      (ويندوز: AddFontResourceExW بصلاحية خاصة للعملية / لينكس: ~/.local/share/fonts + fc-cache)،
+#      فمفيش حاجة المستخدم يعملها. وUI_FONTS بقى فيه cairo و tajawal.
+#    • RES_DIR            : مسار الموارد (img / fonts) بيدعم الـ exe (onefile → _MEIPASS).
+#    • KhadamatMisr.spec  : datas بقى فيه ('fonts', 'fonts') عشان الخطوط تدخل الـ exe.
+#    • شاشة المظهر        : عنوان الثيمات بيحسب العدد تلقائيًا (بقى 9) + سطر توضيحي
+#      إن ثيم «ذهبي فاخر» بيغيّر الأزرار والخط معاه.
+#
+#  قبل كده (2.10.0): شاشة المظهر بمسطرتين + ملء الشاشة المتكيّف + توحيد الاسم —
 #    • appearance_dialog() : محتوى شاشة «المظهر والثيمات» بقى جوه Canvas بمسطرتين
 #      (رأسية + أفقية) عشان توصل لآخر الثيمات على أي مقاس شاشة، + عجلة الفأرة جوه
 #      الشاشة، + سطر الاختصارات بيتلوّن تلقائيًا (wraplength متكيّف)، + حد أدنى

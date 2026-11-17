@@ -11,7 +11,7 @@ a = Analysis(
     ['center_management.py'],
     pathex=['.'],
     binaries=[],
-    datas=[('img', 'img')],
+    datas=[('img', 'img'), ('fonts', 'fonts')],
     hiddenimports=['arabic_reshaper', 'bidi', 'bidi.algorithm', 'net'],
     hookspath=[],
     hooksconfig={},
