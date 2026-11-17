@@ -21,7 +21,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.6.2"
+APP_VERSION = "2.7.0"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -89,45 +89,67 @@ MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو",
 FONT = "Tahoma"
 EMOJI_FONT = "Segoe UI Emoji"
 SETTINGS_PATH = os.path.join(BASE, "settings.json")
-# اللوحة الأساسية للوضع النهاري (أزرق مؤسسي) — باقي اللوحات تُبنى عليها بتغيير الألوان الرئيسية
-_LIGHT = dict(NAVY="#0b1d3a", NAVY_2="#13315c", BLUE="#2a7fff", GOLD="#f5b82e", BG="#eef3fb", WHITE="#ffffff",
-              TEXT="#14233b", MUTED="#6a7d99", LINE="#dbe5f2", RED="#e5484d", GREEN="#12b886", ORANGE="#ff8a3d",
-              PURPLE="#7c5cff", TEAL="#14b8a6", CYAN="#06b6d4", AMBER="#f59e0b", PINK="#ec4899",
-              ODD="#f5f8fe", SOFT="#eaf0fa", SEL="#cfe0ff", INK="#0b1d3a", PRIMARY="#13315c",
-              H1="#0b1d3a", H2="#0f6a86", ENTRY="#ffffff")
-
+# ===== الثيمات: ٨ أنماط مستخرجة من صور المستخدم (ملف zip) =====
+# كل ثيم يحدّد: تدرّج الشريط (H1→H2)، القائمة (NAVY_2)، الخلفية (BG)، الكروت (WHITE)،
+# اللون الأساسي (BLUE/PRIMARY)، الذهبي (GOLD)، ولون نص الشريط (HDR_TEXT/HDR_SUB) للثيمات الفاتحة.
 THEMES = {
-    "light": dict(_LIGHT),
-    "gov": dict(_LIGHT, NAVY="#2f2a22", NAVY_2="#3e352a", BLUE="#8a6d3b", GOLD="#c9a227", BG="#f6f2e9",
-                TEXT="#332f28", MUTED="#7d7364", LINE="#e3dccb", RED="#b23a3a", GREEN="#3f7d4e",
-                ORANGE="#c47a2c", PURPLE="#6b5b95", TEAL="#4f8a8b", CYAN="#2f7f8f", AMBER="#c9971f",
-                PINK="#b05a7a", ODD="#faf6ed", SOFT="#efe8d8", SEL="#e6d9b8", INK="#2f2a22",
-                PRIMARY="#4a3f30", H1="#3a3326", H2="#6b5b3a", WHITE="#fffdf7", ENTRY="#fffdf7"),
-    "emerald": dict(_LIGHT, NAVY="#0c2f2a", NAVY_2="#11443c", BLUE="#1e8e6f", GOLD="#d9a92b", BG="#eef7f2",
-                    TEXT="#16322c", MUTED="#63807a", LINE="#d5e8df", PRIMARY="#11443c", H1="#0c2f2a",
-                    H2="#1d6f5c", ODD="#f3faf6", SOFT="#e2f1e9", SEL="#c6e6d6", INK="#0c2f2a"),
-    "royal": dict(_LIGHT, NAVY="#1b1f4b", NAVY_2="#262b66", BLUE="#4a5ae8", GOLD="#e8b64c", BG="#f0f1fb",
-                  TEXT="#1d2140", MUTED="#6d7396", LINE="#dcdef2", PRIMARY="#262b66", H1="#1b1f4b",
-                  H2="#3a3f8f", ODD="#f6f7fd", SOFT="#e7e9fa", SEL="#d3d7ff", INK="#1b1f4b"),
-    "teal": dict(_LIGHT, NAVY="#083344", NAVY_2="#0d4a5e", BLUE="#0e8ba6", GOLD="#e6b84a", BG="#edf6f9",
-                 TEXT="#123641", MUTED="#5f8290", LINE="#d3e5eb", PRIMARY="#0d4a5e", H1="#083344",
-                 H2="#126c84", ODD="#f4fbfd", SOFT="#e0eff4", SEL="#c6e6ee", INK="#083344"),
-    "slate": dict(_LIGHT, NAVY="#1f2933", NAVY_2="#2b3742", BLUE="#3f7cac", GOLD="#d4a72c", BG="#f1f4f7",
-                  TEXT="#1f2933", MUTED="#6b7785", LINE="#dce3ea", PRIMARY="#2b3742", H1="#1f2933",
-                  H2="#3c5a75", ODD="#f6f8fa", SOFT="#e6ebf0", SEL="#d2e2ef", INK="#1f2933"),
-    "warm": dict(_LIGHT, NAVY="#3b2f2f", NAVY_2="#4a3b39", BLUE="#a05a2c", GOLD="#d9a441", BG="#faf4ee",
-                 TEXT="#3a2f2c", MUTED="#86736b", LINE="#eadfd5", PRIMARY="#4a3b39", H1="#3b2f2f",
-                 H2="#8a5a3a", ODD="#fdf8f3", SOFT="#f3e9df", SEL="#eeddc9", INK="#3b2f2f"),
-    "dark": dict(NAVY="#050a16", NAVY_2="#0b1430", BLUE="#4c8dff", GOLD="#ffc83d", BG="#0a1020", WHITE="#121a2e",
-                 TEXT="#e8eefc", MUTED="#8aa0c8", LINE="#223052", RED="#ff6369", GREEN="#2ecc9a", ORANGE="#ff9f59",
-                 PURPLE="#9d85ff", TEAL="#2dd4bf", CYAN="#22d3ee", AMBER="#fbbf24", PINK="#f472b6",
-                 ODD="#16203a", SOFT="#1a2542", SEL="#25407a", INK="#ffffff", PRIMARY="#2f5bd8",
-                 H1="#050a16", H2="#0b4a63", ENTRY="#0d1528"),
+    # ١) أزرق بحري — شريط متدرّج (كحلي ← تركوازي) + محتوى فاتح
+    "ocean": dict(NAVY="#0b1d3a", NAVY_2="#13315c", BLUE="#2a7fff", GOLD="#f5b82e", BG="#eef3fb", WHITE="#ffffff",
+                  TEXT="#14233b", MUTED="#6a7d99", LINE="#dbe5f2", RED="#e5484d", GREEN="#12b886", ORANGE="#ff8a3d",
+                  PURPLE="#7c5cff", TEAL="#14b8a6", CYAN="#06b6d4", AMBER="#f59e0b", PINK="#ec4899",
+                  ODD="#f5f8fe", SOFT="#eaf0fa", SEL="#cfe0ff", INK="#0b1d3a", PRIMARY="#13315c",
+                  H1="#0b1d3a", H2="#0f6a86", ENTRY="#ffffff", HDR_TEXT="#ffffff", HDR_SUB="#ffd978"),
+    # ٢) كحلي كلاسيكي — شريط كحلي ثابت + محتوى فاتح
+    "navy": dict(NAVY="#0a1c3c", NAVY_2="#0c2444", BLUE="#1667c8", GOLD="#e8b64c", BG="#eef3f9", WHITE="#ffffff",
+                 TEXT="#14233b", MUTED="#6a7d99", LINE="#d8e2ee", RED="#e5484d", GREEN="#12b886", ORANGE="#ff8a3d",
+                 PURPLE="#7c5cff", TEAL="#14b8a6", CYAN="#06b6d4", AMBER="#f59e0b", PINK="#ec4899",
+                 ODD="#f5f8fc", SOFT="#e6eef8", SEL="#cfe0ff", INK="#0a1c3c", PRIMARY="#123a6b",
+                 H1="#0a1c3c", H2="#0d2a52", ENTRY="#ffffff", HDR_TEXT="#ffffff", HDR_SUB="#ffd978"),
+    # ٣) بيج رملي — شريط بيج + قائمة رمادية مزرقّة
+    "sand": dict(NAVY="#e8d8b8", NAVY_2="#7d8f92", BLUE="#8a6d3b", GOLD="#c9a227", BG="#f5f2ea", WHITE="#ffffff",
+                 TEXT="#3a352c", MUTED="#7d7364", LINE="#e3dccb", RED="#b23a3a", GREEN="#3f7d4e", ORANGE="#c47a2c",
+                 PURPLE="#6b5b95", TEAL="#4f8a8b", CYAN="#2f7f8f", AMBER="#c9971f", PINK="#b05a7a",
+                 ODD="#faf7f0", SOFT="#efe8d8", SEL="#e6d9b8", INK="#2f2a22", PRIMARY="#8a7f6a",
+                 H1="#f8f0d8", H2="#c8b8a0", ENTRY="#ffffff", HDR_TEXT="#3a352c", HDR_SUB="#8a6d3b"),
+    # ٤) فاتح بقائمة كحلية — شريط فاتح + قائمة كحلية غامقة
+    "pearl": dict(NAVY="#eef0f4", NAVY_2="#232c3c", BLUE="#3b5bdb", GOLD="#c9a227", BG="#f4f5f7", WHITE="#ffffff",
+                  TEXT="#22293a", MUTED="#6b7280", LINE="#dde1e7", RED="#dc2626", GREEN="#16a34a", ORANGE="#ea580c",
+                  PURPLE="#7c3aed", TEAL="#0d9488", CYAN="#0891b2", AMBER="#d97706", PINK="#db2777",
+                  ODD="#f8f9fb", SOFT="#e9ecf1", SEL="#dbe4ff", INK="#22293a", PRIMARY="#2b3648",
+                  H1="#f0f0f8", H2="#e2e6ee", ENTRY="#ffffff", HDR_TEXT="#22293a", HDR_SUB="#3b5bdb"),
+    # ٥) ليلي فحمي — فحمي + زيتوني
+    "charcoal": dict(NAVY="#1c1c1c", NAVY_2="#101010", BLUE="#7f8c5a", GOLD="#c8b06a", BG="#0b0b0b", WHITE="#171717",
+                     TEXT="#e2e2d6", MUTED="#8f9080", LINE="#2a2a26", RED="#e0736f", GREEN="#8fae6a", ORANGE="#d9a05a",
+                     PURPLE="#a99bd6", TEAL="#6fae9a", CYAN="#6fc0c8", AMBER="#c8b06a", PINK="#d98fb0",
+                     ODD="#131311", SOFT="#1a1a17", SEL="#3a3d2a", INK="#f0f0e4", PRIMARY="#3a3a30",
+                     H1="#1c1c1c", H2="#303030", ENTRY="#121210", HDR_TEXT="#ffffff", HDR_SUB="#d8cfa8"),
+    # ٦) ليلي كحلي — كحلي رمادي داكن
+    "midnight": dict(NAVY="#182028", NAVY_2="#131b28", BLUE="#3b82f6", GOLD="#e0b64a", BG="#0b1320", WHITE="#182534",
+                     TEXT="#dfe8f5", MUTED="#8a9bb0", LINE="#22303f", RED="#f87171", GREEN="#34d399", ORANGE="#fb923c",
+                     PURPLE="#a78bfa", TEAL="#2dd4bf", CYAN="#22d3ee", AMBER="#fbbf24", PINK="#f472b6",
+                     ODD="#101a28", SOFT="#16202e", SEL="#1e3a5f", INK="#eef4fb", PRIMARY="#2b4a7a",
+                     H1="#182028", H2="#223040", ENTRY="#101828", HDR_TEXT="#ffffff", HDR_SUB="#e0b64a"),
+    # ٧) ليلي أسود — أسود مزرق عميق
+    "onyx": dict(NAVY="#000810", NAVY_2="#050d18", BLUE="#3b82f6", GOLD="#e8b64c", BG="#0a1420", WHITE="#16202e",
+                 TEXT="#e6eef8", MUTED="#8aa0c0", LINE="#1e2c3d", RED="#f87171", GREEN="#34d399", ORANGE="#fb923c",
+                 PURPLE="#a78bfa", TEAL="#2dd4bf", CYAN="#22d3ee", AMBER="#fbbf24", PINK="#f472b6",
+                 ODD="#0d1826", SOFT="#131e2c", SEL="#1b3a63", INK="#f2f7fd", PRIMARY="#2a4a78",
+                 H1="#000810", H2="#0a1a2c", ENTRY="#0c1622", HDR_TEXT="#ffffff", HDR_SUB="#e8b64c"),
+    # ٨) ليلي أخضر — أخضر/تركوازي داكن
+    "forest": dict(NAVY="#1b2b2f", NAVY_2="#16272c", BLUE="#2f8f74", GOLD="#d9b44a", BG="#121a20", WHITE="#1f2a30",
+                   TEXT="#dfeae8", MUTED="#8fa5a2", LINE="#26363a", RED="#e57373", GREEN="#5fbf8f", ORANGE="#d9a05a",
+                   PURPLE="#a99bd6", TEAL="#3fbfa5", CYAN="#4dd0e1", AMBER="#d9b44a", PINK="#d98fb0",
+                   ODD="#16211f", SOFT="#1a2724", SEL="#22463c", INK="#eef6f4", PRIMARY="#2f6b57",
+                   H1="#283038", H2="#184840", ENTRY="#141e1c", HDR_TEXT="#ffffff", HDR_SUB="#d9b44a"),
 }
 
-THEME_LABELS = {"light": "أزرق مؤسسي", "gov": "حكومي كلاسيكي", "emerald": "أخضر مؤسسي",
-                "royal": "أزرق ملكي", "teal": "تركوازي بحري", "slate": "رمادي مكتبي",
-                "warm": "بيج دافئ", "dark": "الوضع الليلي"}
+THEME_LABELS = {"ocean": "أزرق بحري", "navy": "كحلي كلاسيكي", "sand": "بيج رملي",
+                "pearl": "فاتح بقائمة كحلية", "charcoal": "ليلي فحمي", "midnight": "ليلي كحلي",
+                "onyx": "ليلي أسود", "forest": "ليلي أخضر"}
+
+# ترتيب عرض الثيمات الثمانية في شاشة المظهر
+THEME_ORDER = ["ocean", "navy", "sand", "pearl", "charcoal", "midnight", "onyx", "forest"]
+DARK_THEMES = ("charcoal", "midnight", "onyx", "forest")
 
 # أشكال الواجهة: كثافة العرض وحجم الأزرار (تُختار من نافذة الألوان والمظهر)
 UI_STYLES = {
@@ -135,6 +157,17 @@ UI_STYLES = {
     "compact": {"label": "مضغوط", "ROW_H": 26, "BTN_PADX": 12, "BTN_PADY": 5, "NAV_PADY": 0},
     "classic": {"label": "كلاسيكي", "ROW_H": 36, "BTN_PADX": 22, "BTN_PADY": 10, "NAV_PADY": 2},
 }
+
+# ---- محرك الخطوط: نوع الخط وحجمه ----
+UI_FONTS = {"tahoma": "Tahoma", "segoe": "Segoe UI", "arial": "Arial",
+            "calibri": "Calibri", "verdana": "Verdana", "majalla": "Sakkal Majalla"}
+FONT_LABELS = {"tahoma": "Tahoma (افتراضي)", "segoe": "Segoe UI", "arial": "Arial",
+               "calibri": "Calibri", "verdana": "Verdana", "majalla": "Sakkal Majalla"}
+FONT_SIZES = {"small": 0.88, "normal": 1.0, "large": 1.16}
+FONT_SIZE_LABELS = {"small": "صغير", "normal": "عادي", "large": "كبير"}
+
+# ---- أشكال الأزرار: مملوء / محدّد / ناعم ----
+BTN_STYLES = {"solid": "مملوء", "outline": "محدّد", "soft": "ناعم"}
 
 
 def load_settings():
@@ -155,8 +188,16 @@ def save_settings(d):
 
 def apply_theme(name):
     """يغيّر ألوان البرنامج (المتغيرات العامة NAVY, BG, ...)."""
-    name = name if name in THEMES else "light"
+    name = name if name in THEMES else THEME_ORDER[0]
+    globals().update({"HDR_TEXT": "#ffffff", "HDR_SUB": "#ffd978"})
     globals().update(THEMES[name])
+    nav2 = THEMES[name].get("NAVY_2", "#13315c")
+    r, g, b = (int(nav2[i:i + 2], 16) for i in (1, 3, 5))
+    light_side = (0.299 * r + 0.587 * g + 0.114 * b) >= 140
+    globals()["SIDE_MUTED"] = "#33403f" if light_side else "#9fc0e6"
+    globals()["SIDE_TEXT"] = "#1f2a2c" if light_side else "#ffffff"
+    globals()["SIDE_ACCENT"] = "#6b5a2a" if light_side else THEMES[name].get("GOLD", "#f5b82e")
+    globals()["SIDE_ACCENT2"] = "#2f6b57" if light_side else "#9fe3c0"
     globals()["THEME"] = name
 
 
@@ -168,8 +209,30 @@ def apply_style(name):
                       "BTN_PADY": st["BTN_PADY"], "NAV_PADY": st["NAV_PADY"]})
 
 
-apply_theme(load_settings().get("theme", "light"))
+def apply_font(name):
+    """يغيّر نوع الخط المستخدم في كل الواجهة."""
+    name = name if name in UI_FONTS else "tahoma"
+    globals()["FONT"] = UI_FONTS[name]
+    globals()["FONT_KEY"] = name
+
+
+def apply_font_size(name):
+    """يغيّر حجم الخط العام (يُطبَّق عبر tk scaling)."""
+    name = name if name in FONT_SIZES else "normal"
+    globals()["FONT_SCALE"] = FONT_SIZES[name]
+    globals()["FONT_SIZE_KEY"] = name
+
+
+def apply_btn_style(name):
+    """يغيّر شكل الأزرار: مملوء / محدّد / ناعم."""
+    globals()["BTN_STYLE"] = name if name in BTN_STYLES else "solid"
+
+
+apply_theme(load_settings().get("theme", "ocean"))
 apply_style(load_settings().get("style", "comfort"))
+apply_font(load_settings().get("font", "tahoma"))
+apply_font_size(load_settings().get("font_size", "normal"))
+apply_btn_style(load_settings().get("btn_style", "solid"))
 
 # ---- اللغة (عربي / إنجليزي): طبقة الترجمة تُثبَّت قبل إنشاء أي واجهة ----
 import i18n
@@ -2189,8 +2252,10 @@ class CenterApp:
         self.root.minsize(1060, 700)
         self.root.configure(bg=BG)
         self.nav_buttons = {}
+        self._apply_scaling()
         self.setup_style()
         self.build_shell()
+        self.bind_keys()
         self.go("home")
 
     # ---------- الصلاحيات ----------
@@ -2268,7 +2333,8 @@ class CenterApp:
             return None
 
     def build_shell(self):
-        H = 86
+        scale = max(1.0, FONT_SCALE)          # يكبر الهيدر والقائمة مع تكبير الخط
+        H = int(86 * scale)
         hdr = tk.Canvas(self.root, height=H, highlightthickness=0, bd=0, bg=NAVY)
         hdr.pack(fill="x")
         self.hdr = hdr
@@ -2277,19 +2343,19 @@ class CenterApp:
         if self.logo_img:
             logo = tk.Label(hdr, image=self.logo_img, bg="white", bd=0, highlightbackground=GOLD, highlightthickness=3)
         else:
-            logo = tk.Label(hdr, text="خ", bg=GOLD, fg=NAVY, font=(FONT, 26, "bold"), width=3)
+            logo = tk.Label(hdr, text="خ", bg=GOLD, fg="#1a2233", font=(FONT, 26, "bold"), width=3)
         en = i18n.is_en()
         logo_win = hdr.create_window(0, 0, anchor="w" if en else "e", window=logo)
-        title_id = hdr.create_text(0, 0, anchor="center", text=APP_NAME, fill="white", font=(FONT, 26, "bold"))
-        sub_id = hdr.create_text(0, 0, anchor="center", text=f"فرع {BRANCH}", fill="#ffd978", font=(FONT, 13, "bold"))
-        self.clock_id = hdr.create_text(0, 0, anchor="e" if en else "w", text="", fill="#e3efff", font=(FONT, 11, "bold"))
-        self.theme_btn = tk.Button(hdr, text="🌙  الوضع الليلي" if THEME != "dark" else "☀️  الوضع النهاري",
-                                   command=self.toggle_theme, bg=GOLD, fg=NAVY, activebackground="white",
+        title_id = hdr.create_text(0, 0, anchor="center", text=APP_NAME, fill=HDR_TEXT, font=(FONT, 26, "bold"))
+        sub_id = hdr.create_text(0, 0, anchor="center", text=f"فرع {BRANCH}", fill=HDR_SUB, font=(FONT, 13, "bold"))
+        self.clock_id = hdr.create_text(0, 0, anchor="e" if en else "w", text="", fill=HDR_TEXT, font=(FONT, 11, "bold"))
+        self.theme_btn = tk.Button(hdr, text="🌙  الوضع الليلي" if THEME not in DARK_THEMES else "☀️  الوضع النهاري",
+                                   command=self.toggle_theme, bg=GOLD, fg="#1a2233", activebackground="white",
                                    relief="flat", bd=0, font=(FONT, 9, "bold"), padx=12, pady=4, cursor="hand2")
         btn_win = hdr.create_window(0, 0, anchor="e" if en else "w", window=self.theme_btn)
         # زر تبديل اللغة: يعرض اسم اللغة الأخرى (بدون ترجمة)
         self.lang_btn = tk.Button(hdr, text="🌐  العربية" if en else "🌐  English",
-                                  command=self.toggle_lang, bg="white", fg=NAVY, activebackground=GOLD,
+                                  command=self.toggle_lang, bg="white", fg="#1a2233", activebackground=GOLD,
                                   relief="flat", bd=0, font=(FONT, 9, "bold"), padx=12, pady=4, cursor="hand2")
         lang_win = hdr.create_window(0, 0, anchor="e" if en else "w", window=self.lang_btn)
         who = self.user["username"] + (" (مدير)" if self.user["is_admin"] else "")
@@ -2297,7 +2363,7 @@ class CenterApp:
                                       relief="flat", bd=0, font=(FONT, 9, "bold"), padx=12, pady=4, cursor="hand2")
         um = tk.Menu(self.user_btn, tearoff=0, font=(FONT, 10)); self.user_btn.config(menu=um)
         um.add_command(label="🔑  تغيير كلمة المرور", command=self.change_password_dialog)
-        um.add_command(label="🎨  الألوان والمظهر", command=self.appearance_dialog)
+        um.add_command(label="🎨  المظهر والثيمات", command=self.appearance_dialog)
         if self.user["is_admin"]:
             um.add_command(label="👥  المستخدمون والصلاحيات", command=self.users_dialog)
             um.add_command(label="🌐  الشبكة (LAN)", command=self.net_dialog)
@@ -2312,19 +2378,20 @@ class CenterApp:
             paint_gradient(hdr, w, H, H1, H2)
             hdr.create_rectangle(0, H - 4, w, H, fill=GOLD, outline="", tags="grad")
             hdr.tag_lower("grad")
-            hdr.coords(title_id, w // 2, 33); hdr.coords(sub_id, w // 2, 63)
+            hdr.coords(title_id, w // 2, int(33 * scale)); hdr.coords(sub_id, w // 2, int(63 * scale))
+            row1, row2 = int(28 * scale), int(58 * scale)
             if en:                          # English interface: logo left, controls right (LTR)
                 hdr.coords(logo_win, 22, H // 2 - 2)
-                hdr.coords(self.clock_id, w - 24, 28)
-                hdr.coords(btn_win, w - 24, 58)
-                hdr.coords(lang_win, w - 156, 58)
-                hdr.coords(umb_win, w - 300, 58)
+                hdr.coords(self.clock_id, w - 24, row1)
+                hdr.coords(btn_win, w - 24, row2)
+                hdr.coords(lang_win, w - int(156 * scale), row2)
+                hdr.coords(umb_win, w - int(300 * scale), row2)
             else:                           # Arabic interface (RTL)
                 hdr.coords(logo_win, w - 22, H // 2 - 2)
-                hdr.coords(self.clock_id, 24, 28)
-                hdr.coords(btn_win, 24, 58)
-                hdr.coords(lang_win, 184, 58)
-                hdr.coords(umb_win, 288, 58)
+                hdr.coords(self.clock_id, 24, row1)
+                hdr.coords(btn_win, 24, row2)
+                hdr.coords(lang_win, int(184 * scale), row2)
+                hdr.coords(umb_win, int(288 * scale), row2)
         hdr.bind("<Configure>", layout)
         self.tick()
 
@@ -2337,10 +2404,10 @@ class CenterApp:
 
         shell = tk.Frame(self.root, bg=BG)
         shell.pack(fill="both", expand=True)
-        self.sidebar = tk.Frame(shell, bg=NAVY_2, width=285)
+        self.sidebar = tk.Frame(shell, bg=NAVY_2, width=int(285 * scale))
         self.sidebar.pack(side="right", fill="y")
         self.sidebar.pack_propagate(False)
-        tk.Label(self.sidebar, text="القائمة الرئيسية", bg=NAVY_2, fg="#9fc0e6",
+        tk.Label(self.sidebar, text="القائمة الرئيسية", bg=NAVY_2, fg=SIDE_MUTED,
                  font=(FONT, 11, "bold")).pack(pady=(16, 8))
         for key, icon, label in self.NAV:
             if key != "home" and not self.can(key, "view"):
@@ -2348,22 +2415,22 @@ class CenterApp:
             ic = load_icon(key, 30)
             look = dict(text=" " + label, image=ic, compound="right") if ic else dict(text=f"{label}   {icon}")
             b = tk.Button(self.sidebar, command=lambda k=key: self.go(k),
-                          anchor="e", bg=NAVY_2, fg="white", activebackground=BLUE,
+                          anchor="e", bg=NAVY_2, fg=SIDE_TEXT, activebackground=BLUE,
                           activeforeground="white", relief="flat", bd=0,
                           font=(FONT, 11, "bold"), padx=18, pady=NAV_PADY if ic else NAV_PADY + 2, cursor="hand2", **look)
             b.pack(fill="x", padx=10, pady=1)
             b.bind("<Enter>", lambda e, k=key: self.nav_hover(k, True))
             b.bind("<Leave>", lambda e, k=key: self.nav_hover(k, False))
             self.nav_buttons[key] = b
-        tk.Button(self.sidebar, text="الألوان والمظهر   🎨", command=self.appearance_dialog, anchor="e",
-                  bg=NAVY_2, fg="#ffe0a3", activebackground=BLUE, activeforeground="white", relief="flat", bd=0,
+        tk.Button(self.sidebar, text="المظهر والثيمات   🎨", command=self.appearance_dialog, anchor="e",
+                  bg=NAVY_2, fg=SIDE_ACCENT, activebackground=BLUE, activeforeground="white", relief="flat", bd=0,
                   font=(FONT, 10, "bold"), padx=18, pady=8, cursor="hand2").pack(side="bottom", fill="x", padx=10, pady=(0, 6))
         if self.user["is_admin"]:
             tk.Button(self.sidebar, text="النسخ الاحتياطية   🗂️", command=self.backups_dialog, anchor="e",
-                      bg=NAVY, fg=GOLD, activebackground=BLUE, activeforeground="white", relief="flat", bd=0,
+                      bg=NAVY, fg=SIDE_ACCENT, activebackground=BLUE, activeforeground="white", relief="flat", bd=0,
                       font=(FONT, 10, "bold"), padx=18, pady=9, cursor="hand2").pack(side="bottom", fill="x", padx=10, pady=(0, 14))
             tk.Button(self.sidebar, text="إدراج نسخة احتياطية   📂", command=self.restore_backup, anchor="e",
-                      bg=NAVY, fg="#9fe3c0", activebackground=BLUE, activeforeground="white", relief="flat", bd=0,
+                      bg=NAVY, fg=SIDE_ACCENT2, activebackground=BLUE, activeforeground="white", relief="flat", bd=0,
                       font=(FONT, 10, "bold"), padx=18, pady=9, cursor="hand2").pack(side="bottom", fill="x", padx=10, pady=(0, 6))
         self.active_key = None
         self.content = tk.Frame(shell, bg=BG)
@@ -2376,69 +2443,144 @@ class CenterApp:
             w.destroy()
         self.nav_buttons = {}
         self.root.configure(bg=BG)
-        self.setup_style(); self.build_shell(); self.go(cur)
+        self._apply_scaling()
+        self.setup_style(); self.build_shell(); self.bind_keys(); self.go(cur)
+
+    def _apply_scaling(self):
+        """يطبّق حجم الخط العام عبر tk scaling (نسبة مبنية على القيمة الأصلية للشاشة)."""
+        try:
+            base = getattr(self, "_base_scaling", None)
+            if not base or base <= 0:
+                base = float(self.root.tk.call("tk", "scaling"))
+                if base <= 0:
+                    base = 1.333
+                self._base_scaling = base
+            self.root.tk.call("tk", "scaling", base * FONT_SCALE)
+        except Exception:
+            pass
+
+    # اختصارات لوحة المفاتيح: F1..F11 -> الأقسام (F12 للمظهر)
+    HOTKEYS = [("F1", "home"), ("F2", "notes"), ("F3", "workers"), ("F4", "govstaff"),
+               ("F5", "attend"), ("F6", "gov"), ("F7", "visits"), ("F8", "maintenance"),
+               ("F9", "purchases"), ("F10", "reports"), ("F11", "compare")]
+
+    def bind_keys(self):
+        """يربط اختصارات لوحة المفاتيح: F1..F12 للأقسام + Alt+الأسهم للتنقّل بين الأقسام."""
+        for seq, key in self.HOTKEYS:
+            self.root.bind(seq, lambda e, k=key: (self.go(k), "break")[1])
+        self.root.bind("<F12>", lambda e: (self.appearance_dialog(), "break")[1])
+        self.root.bind("<Alt-Right>", lambda e: (self.cycle_page(-1), "break")[1])
+        self.root.bind("<Alt-Left>", lambda e: (self.cycle_page(1), "break")[1])
+
+    def visible_pages(self):
+        return [k for k, _ic, _lb in self.NAV if k == "home" or self.can(k, "view")]
+
+    def cycle_page(self, step):
+        pages = self.visible_pages()
+        if not pages:
+            return
+        cur = self.active_key if self.active_key in pages else pages[0]
+        self.go(pages[(pages.index(cur) + step) % len(pages)])
 
     def toggle_theme(self):
-        new = "dark" if THEME != "dark" else "light"
-        apply_theme(new)
-        cfg = load_settings(); cfg["theme"] = new; save_settings(cfg)
+        """يبدّل بين الوضع النهاري وآخر ثيم ليلي استُخدم."""
+        cfg = load_settings()
+        if THEME in DARK_THEMES:
+            new = cfg.get("last_light", "ocean")
+            if new in DARK_THEMES:
+                new = "ocean"
+        else:
+            cfg["last_light"] = THEME
+            new = "midnight"
+        apply_theme(new); cfg["theme"] = new; save_settings(cfg)
         self.rebuild_ui()
 
     def appearance_dialog(self):
-        """اختيار ألوان الواجهة (7 لوحات نهارية + الليلي) وشكل العرض (مريح / مضغوط / كلاسيكي)."""
-        win = self._dialog("الألوان والمظهر", "800x680")
-        win.minsize(720, 580)
-        tk.Label(win, text="🎨 الألوان والمظهر", bg=BG, fg=INK, font=(FONT, 17, "bold")).pack(anchor="e", padx=22, pady=(14, 2))
-        tk.Label(win, text="اختر ألوان الواجهة وشكل العرض — التغيير يُطبَّق ويُحفظ فورًا، والوضع النهاري هو الأساس للعمل المكتبي.",
-                 bg=BG, fg=MUTED, font=(FONT, 9)).pack(anchor="e", padx=24)
+        """شاشة المظهر: 8 ثيمات + نوع الخط + حجم الخط + شكل الأزرار + كثافة العرض."""
+        win = self._dialog("المظهر والثيمات", "940x780")
+        win.minsize(840, 660)
+        tk.Label(win, text="🎨 المظهر والثيمات", bg=BG, fg=INK, font=(FONT, 18, "bold")).pack(anchor="e", padx=24, pady=(14, 2))
+        tk.Label(win, text="اختر ثيمًا كاملًا (ألوان + خط + شكل) — التغيير يُطبَّق ويُحفظ فورًا على هذا الجهاز.",
+                 bg=BG, fg=MUTED, font=(FONT, 10)).pack(anchor="e", padx=26)
 
-        body = tk.Frame(win, bg=BG); body.pack(fill="both", expand=True, padx=18, pady=8)
-        tk.Label(body, text="ألوان الواجهة (الوضع النهاري + الليلي)", bg=BG, fg=INK,
-                 font=(FONT, 12, "bold"), anchor="e").pack(fill="x", pady=(6, 2))
+        body = tk.Frame(win, bg=BG); body.pack(fill="both", expand=True, padx=18, pady=6)
+
+        tk.Label(body, text="① الثيمات (8)", bg=BG, fg=INK, font=(FONT, 13, "bold"), anchor="e").pack(fill="x", pady=(6, 2))
         grid = tk.Frame(body, bg=BG); grid.pack(fill="x")
-        order = [k for k in THEMES if k != "dark"] + ["dark"]
-        for i, key in enumerate(order):
+        for i, key in enumerate(THEME_ORDER):
             pal = THEMES[key]
             on = THEME == key
-            card = tk.Frame(grid, bg=WHITE, highlightbackground=pal["BLUE"] if on else LINE,
+            card = tk.Frame(grid, bg=pal["WHITE"], highlightbackground=pal["BLUE"] if on else LINE,
                             highlightthickness=3 if on else 1)
             r, c = divmod(i, 4)
-            card.grid(row=r, column=3 - c, padx=6, pady=6, sticky="nsew")
+            card.grid(row=r, column=3 - c, padx=5, pady=5, sticky="nsew")
             grid.grid_columnconfigure(c, weight=1, uniform="pal")
-            sw = tk.Canvas(card, width=150, height=44, highlightthickness=0, bd=0, bg=WHITE)
+            sw = tk.Canvas(card, width=150, height=40, highlightthickness=0, bd=0, bg=pal["WHITE"])
             sw.pack(fill="x", padx=6, pady=(6, 2))
-            cols = [pal["NAVY_2"], pal["BLUE"], pal["GOLD"], pal["BG"], pal["WHITE"]]
-            for j, col in enumerate(cols):
-                sw.create_rectangle(j * 30, 0, (j + 1) * 30, 44, outline="", fill=col)
-            tk.Label(card, text=THEME_LABELS.get(key, key), bg=WHITE, fg=TEXT,
+            for j, col in enumerate([pal["NAVY_2"], pal["BLUE"], pal["GOLD"], pal["BG"], pal["WHITE"]]):
+                sw.create_rectangle(j * 30, 0, (j + 1) * 30, 40, outline="", fill=col)
+            tk.Label(card, text=THEME_LABELS.get(key, key), bg=pal["WHITE"], fg=pal["TEXT"],
                      font=(FONT, 10, "bold")).pack(pady=(2, 0))
             tk.Button(card, text="✔ مختار" if on else "تطبيق", command=lambda k=key: self.apply_appearance(theme=k),
                       bg=GREEN if on else pal["BLUE"], fg="white", activebackground=GOLD, activeforeground=INK,
                       relief="flat", bd=0, font=(FONT, 9, "bold"), padx=10, pady=4,
                       cursor="hand2").pack(pady=(2, 6))
 
-        tk.Label(body, text="شكل الواجهة", bg=BG, fg=INK, font=(FONT, 12, "bold"),
-                 anchor="e").pack(fill="x", pady=(10, 2))
-        srow = tk.Frame(body, bg=WHITE, highlightbackground=LINE, highlightthickness=1)
-        srow.pack(fill="x", padx=4)
+        tk.Label(body, text="② نوع الخط", bg=BG, fg=INK, font=(FONT, 13, "bold"), anchor="e").pack(fill="x", pady=(12, 2))
+        frow = tk.Frame(body, bg=WHITE, highlightbackground=LINE, highlightthickness=1); frow.pack(fill="x")
+        for key, lbl in FONT_LABELS.items():
+            on = FONT_KEY == key
+            tk.Button(frow, text=lbl, command=lambda k=key: self.apply_appearance(font=k),
+                      bg=GREEN if on else SOFT, fg="white" if on else TEXT, activebackground=BLUE,
+                      activeforeground="white", relief="flat", bd=0, font=(UI_FONTS[key], 10, "bold"),
+                      padx=12, pady=7, cursor="hand2").pack(side="right", expand=True, fill="x", padx=4, pady=8)
+
+        tk.Label(body, text="③ حجم الخط", bg=BG, fg=INK, font=(FONT, 13, "bold"), anchor="e").pack(fill="x", pady=(10, 2))
+        srow = tk.Frame(body, bg=WHITE, highlightbackground=LINE, highlightthickness=1); srow.pack(fill="x")
+        for key, lbl in FONT_SIZE_LABELS.items():
+            on = FONT_SIZE_KEY == key
+            tk.Button(srow, text=lbl, command=lambda k=key: self.apply_appearance(font_size=k),
+                      bg=GREEN if on else SOFT, fg="white" if on else TEXT, activebackground=BLUE,
+                      activeforeground="white", relief="flat", bd=0, font=(FONT, 10, "bold"),
+                      padx=12, pady=7, cursor="hand2").pack(side="right", expand=True, fill="x", padx=4, pady=8)
+
+        tk.Label(body, text="④ شكل الأزرار", bg=BG, fg=INK, font=(FONT, 13, "bold"), anchor="e").pack(fill="x", pady=(10, 2))
+        brow = tk.Frame(body, bg=WHITE, highlightbackground=LINE, highlightthickness=1); brow.pack(fill="x")
+        for key, lbl in BTN_STYLES.items():
+            on = BTN_STYLE == key
+            tk.Button(brow, text=lbl, command=lambda k=key: self.apply_appearance(btn_style=k),
+                      bg=GREEN if on else SOFT, fg="white" if on else TEXT, activebackground=BLUE,
+                      activeforeground="white", relief="flat", bd=0, font=(FONT, 10, "bold"),
+                      padx=12, pady=7, cursor="hand2").pack(side="right", expand=True, fill="x", padx=4, pady=8)
+
+        tk.Label(body, text="⑤ كثافة العرض", bg=BG, fg=INK, font=(FONT, 13, "bold"), anchor="e").pack(fill="x", pady=(10, 2))
+        drow = tk.Frame(body, bg=WHITE, highlightbackground=LINE, highlightthickness=1); drow.pack(fill="x")
         for key, st in UI_STYLES.items():
             on = STYLE == key
-            tk.Button(srow, text=f"{st['label']}\nصفوف {st['ROW_H']}px · أزرار {st['BTN_PADX']}×{st['BTN_PADY']}",
-                      command=lambda k=key: self.apply_appearance(style=k),
+            tk.Button(drow, text=f"{st['label']}  (صفوف {st['ROW_H']}px)", command=lambda k=key: self.apply_appearance(style=k),
                       bg=GREEN if on else SOFT, fg="white" if on else TEXT, activebackground=BLUE,
-                      activeforeground="white", relief="flat", bd=0, font=(FONT, 9, "bold"),
-                      padx=14, pady=6, cursor="hand2").pack(side="right", expand=True, fill="x", padx=5, pady=8)
-        tk.Label(body, text="ملاحظة: كل الألوان فاتحة ومناسبة للعمل المكتبي، والوضع الليلي يبقى متاحًا من زر القمر أعلى الشاشة.",
-                 bg=BG, fg=MUTED, font=(FONT, 9)).pack(anchor="e", pady=(8, 0))
+                      activeforeground="white", relief="flat", bd=0, font=(FONT, 10, "bold"),
+                      padx=12, pady=7, cursor="hand2").pack(side="right", expand=True, fill="x", padx=4, pady=8)
+
+        tk.Label(body, text="⌨️ اختصارات: F1 الرئيسية · F2 ملاحظات · F3 العاملين · F4 موظفي الجهات · F5 حضور العاملين · "
+                            "F6 حضور الجهات · F7 الزيارات · F8 الصيانة · F9 المشتريات · F10 التقارير · F11 المقارنة · "
+                            "F12 المظهر · Alt+→/← التنقّل بين الأقسام · Esc إغلاق النافذة",
+                 bg=BG, fg=MUTED, font=(FONT, 9), anchor="e", justify="right", wraplength=860).pack(fill="x", pady=(10, 0))
         self.btn(win, "إغلاق", win.destroy, MUTED).pack(pady=10)
 
-    def apply_appearance(self, theme=None, style=None):
-        """يطبّق اللون/الشكل المختار، يحفظه في الإعدادات، ويعيد بناء الواجهة فورًا."""
+    def apply_appearance(self, theme=None, style=None, font=None, font_size=None, btn_style=None):
+        """يطبّق الثيم/الخط/الحجم/شكل الأزرار، يحفظه في الإعدادات، ويعيد بناء الواجهة فورًا."""
         cfg = load_settings()
         if theme:
             apply_theme(theme); cfg["theme"] = theme
         if style:
             apply_style(style); cfg["style"] = style
+        if font:
+            apply_font(font); cfg["font"] = font
+        if font_size:
+            apply_font_size(font_size); cfg["font_size"] = font_size
+        if btn_style:
+            apply_btn_style(btn_style); cfg["btn_style"] = btn_style
         save_settings(cfg)
         self.rebuild_ui()
 
@@ -3138,9 +3280,18 @@ class CenterApp:
         return tk.Frame(parent or self.content, bg=WHITE, highlightbackground=LINE, highlightthickness=1)
 
     def btn(self, parent, text, cmd, color=None, **kw):
-        return tk.Button(parent, text=text, command=cmd, bg=color or PRIMARY, fg="white", activebackground=BLUE,
-                         activeforeground="white", relief="flat", font=(FONT, 10, "bold"),
-                         padx=BTN_PADX, pady=BTN_PADY, cursor="hand2", **kw)
+        color = color or PRIMARY
+        if BTN_STYLE == "outline":
+            cfg = dict(bg=WHITE, fg=color, activebackground=color, activeforeground="white",
+                       highlightbackground=color, highlightcolor=color, highlightthickness=1, relief="flat")
+        elif BTN_STYLE == "soft":
+            cfg = dict(bg=lerp_color(WHITE, color, 0.16), fg=color, activebackground=color,
+                       activeforeground="white", relief="flat")
+        else:
+            cfg = dict(bg=color, fg="white", activebackground=BLUE, activeforeground="white", relief="flat")
+        cfg.update(kw)
+        return tk.Button(parent, text=text, command=cmd, font=(FONT, 10, "bold"),
+                         padx=BTN_PADX, pady=BTN_PADY, cursor="hand2", **cfg)
 
     def add_field(self, parent, label, var, row, col, width):
         box = tk.Frame(parent, bg=WHITE)
@@ -4365,6 +4516,7 @@ class CenterApp:
         try:
             win.transient(self.root)
             win.geometry(f"{size}+{self.root.winfo_rootx() + 160}+{max(0, self.root.winfo_rooty() + 20)}")
+            win.bind("<Escape>", lambda e: win.destroy())   # Esc يغلق أي نافذة
             win.wait_visibility(); win.grab_set()
         except Exception:
             pass
@@ -6142,7 +6294,17 @@ if __name__ == "__main__":
 # ----------------------------------------------------------------------------
 #  كل الكود فوق السطر ده خلص ومتّفق عليه. أي إضافة أو تعديل جديد يبدأ من هنا.
 #
-#  آخر حاجة اتعملت: شيل «🧠 ملخص ذكي» من الصفحة الرئيسية —
+#  آخر حاجة اتعملت: محرّك المظهر والثيمات (2.7.0) —
+#    • THEMES/THEME_LABELS/THEME_ORDER/DARK_THEMES : 8 ثيمات (ألوان مستخرجة من صور المستخدم).
+#    • UI_FONTS/FONT_LABELS + apply_font()         : 6 خطوط (يغيّر FONT العام).
+#    • FONT_SIZES/FONT_SIZE_LABELS + apply_font_size() : صغير/عادي/كبير عبر tk scaling (_apply_scaling).
+#    • BTN_STYLES + apply_btn_style()              : مملوء/محدّد/ناعم — btn() بيحترم BTN_STYLE.
+#    • apply_theme()   : يحدّث الألوان العامة + HDR_TEXT/HDR_SUB/SIDE_TEXT/SIDE_MUTED/SIDE_ACCENT تلقائيًا.
+#    • appearance_dialog()/apply_appearance() : شاشة «🎨 المظهر والثيمات» (تطبيق فوري + حفظ في settings.json).
+#    • toggle_theme()  : 🌙/☀️ بيفضل فاكر آخر ثيم نهاري (settings["last_light"]).
+#    • bind_keys()/cycle_page()/HOTKEYS : F1–F11 أقسام، F12 مظهر، Alt+→/← تنقّل، Esc إغلاق.
+#
+#  قبل كده (2.6.2): شيل «🧠 ملخص ذكي» من الصفحة الرئيسية —
 #    • show_home() : اتشال منها صندوق الملخص الذكي اللي كان بياخد مساحة فوق الكروت.
 #      (الملخص الذكي نفسه لسه موجود جوه صفحة «📈 مقارنة الفترات» — insight_box.)
 #

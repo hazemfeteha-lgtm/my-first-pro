@@ -19,13 +19,13 @@ for line in io.open(SRC, encoding="utf-8-sig"):
         break
 
 # آخر نقطة توقف (حدّثها بعد كل بناء/رفع)
-LAST_COMMIT = "cfac436 — شيل «ملخص ذكي» من الصفحة الرئيسية (2.6.2)"
-LAST_RUN = "44077116622"
-EXE_BYTES = "16,354,291"
-EXE_MD5 = "22417fb66c169bc963867fdb32337221"
-PKG_NAME = "KhadamatMisr_v2.6.2_windows.zip"
-PKG_FILES = "584"
-SHOTS = "46"
+LAST_COMMIT = "— (يتحدّث بعد الرفع)"
+LAST_RUN = "—"
+EXE_BYTES = "—"
+EXE_MD5 = "—"
+PKG_NAME = "KhadamatMisr_v2.7.0_windows.zip"
+PKG_FILES = "—"
+SHOTS = "11"
 
 
 def structure(path):
@@ -90,6 +90,12 @@ def main():
     w("  ومفتاح تشغيل/إيقاف في شاشة الملاحظات (`toggle_note_sound`) محفوظ في `settings.json` لكل جهاز.")
     w("- 2.6.2: **تنظيف الصفحة الرئيسية** — اتشال صندوق «ملخص ذكي» اللي كان بياخد مساحة فوق الكروت")
     w("  (`show_home`)، والملخص الذكي لسه موجود جوه «مقارنة الفترات» (`insight_box`).")
+    w("- 2.7.0: **محرّك المظهر والثيمات** — شاشة `appearance_dialog` فيها 8 ثيمات (ألوان مستخرجة من")
+    w("  صور المستخدم) + 6 خطوط (`UI_FONTS`/`apply_font`) + 3 أحجام (`FONT_SIZES`/`apply_font_size`")
+    w("  عبر tk scaling) + 3 أشكال أزرار (`BTN_STYLES`/`apply_btn_style`، و`btn()` بيحترمها) + 3 كثافات")
+    w("  (`UI_STYLES`). تغيير الثيم = `apply_theme` + `rebuild_ui`. تلوين نص الشريط تلقائيًا")
+    w("  (`HDR_TEXT`/`HDR_SUB`) والقائمة (`SIDE_TEXT`/`SIDE_MUTED`/`SIDE_ACCENT`). اختصارات:")
+    w("  `bind_keys` (F1–F11 أقسام، F12 مظهر، Alt+→/← `cycle_page`، Esc إغلاق).")
     w("")
     w("### لسه (Pending) — ابدأ من هنا")
     w("")
@@ -154,7 +160,7 @@ def main():
     w("| ملاحظات الوحدات | `show_notes` · `load_notes` · `save_note` · `delete_note` · `mark_note_done` · `build_notes_banner` |")
     w("| المقارنة | `show_compare` · `run_compare` |")
     w("| التقارير | `show_reports` · `build_report` |")
-    w("| المظهر والألوان | `appearance_dialog` · `apply_appearance` |")
+    w("| المظهر والثيمات | `appearance_dialog` · `apply_appearance` · `apply_theme` · `apply_font` · `apply_font_size` · `apply_btn_style` · `toggle_theme` · `bind_keys` · `cycle_page` |")
     w("| المستخدمون | `users_dialog` · `user_edit_dialog` |")
     w("| الشبكة (LAN) | `net_dialog` · `refresh_net_status` · `auto_refresh` · `start_net_server` (خارج الكلاس) |")
     w("| سجل العمليات | `audit_dialog` · `net.audit_rows` · `net.fetch_audit` |")
