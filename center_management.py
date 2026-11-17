@@ -22,7 +22,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.8.0"
+APP_VERSION = "2.9.0"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -2485,19 +2485,7 @@ class CenterApp:
         self.sidebar.pack_propagate(False)
         tk.Label(self.sidebar, text="القائمة الرئيسية", bg=NAVY_2, fg=SIDE_MUTED,
                  font=(FONT, 11, "bold")).pack(pady=(16, 8))
-        for key, icon, label in self.NAV:
-            if key != "home" and not self.can(key, "view"):
-                continue
-            ic = load_icon(key, 30)
-            look = dict(text=" " + label, image=ic, compound="right") if ic else dict(text=f"{label}   {icon}")
-            b = tk.Button(self.sidebar, command=lambda k=key: self.go(k),
-                          anchor="e", bg=NAVY_2, fg=SIDE_TEXT, activebackground=BLUE,
-                          activeforeground="white", relief="flat", bd=0,
-                          font=(FONT, 11, "bold"), padx=18, pady=NAV_PADY if ic else NAV_PADY + 2, cursor="hand2", **look)
-            b.pack(fill="x", padx=10, pady=1)
-            b.bind("<Enter>", lambda e, k=key: self.nav_hover(k, True))
-            b.bind("<Leave>", lambda e, k=key: self.nav_hover(k, False))
-            self.nav_buttons[key] = b
+        # الأزرار السفلية تُحجز قبل منطقة التمرير عشان تفضل مثبّتة في آخر القائمة
         tk.Button(self.sidebar, text="المظهر والثيمات   🎨", command=self.appearance_dialog, anchor="e",
                   bg=NAVY_2, fg=SIDE_ACCENT, activebackground=BLUE, activeforeground="white", relief="flat", bd=0,
                   font=(FONT, 10, "bold"), padx=18, pady=8, cursor="hand2").pack(side="bottom", fill="x", padx=10, pady=(0, 6))
@@ -2508,6 +2496,39 @@ class CenterApp:
             tk.Button(self.sidebar, text="إدراج نسخة احتياطية   📂", command=self.restore_backup, anchor="e",
                       bg=NAVY, fg=SIDE_ACCENT2, activebackground=BLUE, activeforeground="white", relief="flat", bd=0,
                       font=(FONT, 10, "bold"), padx=18, pady=9, cursor="hand2").pack(side="bottom", fill="x", padx=10, pady=(0, 6))
+        # منطقة أزرار القائمة جوه Canvas بمسطرة تمرير، عشان توصل لآخر القائمة على أي مقاس شاشة
+        nav_wrap = tk.Frame(self.sidebar, bg=NAVY_2)
+        nav_wrap.pack(fill="both", expand=True)
+        nav_wrap.rowconfigure(0, weight=1)
+        nav_wrap.columnconfigure(1, weight=1)
+        self.nav_canvas = tk.Canvas(nav_wrap, bg=NAVY_2, highlightthickness=0, bd=0)
+        self.nav_vsb = ttk.Scrollbar(nav_wrap, orient="vertical", command=self.nav_canvas.yview)
+        self.nav_canvas.configure(yscrollcommand=self.nav_vsb.set)
+        self.nav_vsb.grid(row=0, column=0, sticky="ns")
+        self.nav_canvas.grid(row=0, column=1, sticky="nsew")
+        self._nav_vsb_shown = True
+        self.nav_inner = tk.Frame(self.nav_canvas, bg=NAVY_2)
+        self.nav_inner_id = self.nav_canvas.create_window((0, 0), window=self.nav_inner, anchor="nw")
+        for key, icon, label in self.NAV:
+            if key != "home" and not self.can(key, "view"):
+                continue
+            ic = load_icon(key, 30)
+            look = dict(text=" " + label, image=ic, compound="right") if ic else dict(text=f"{label}   {icon}")
+            b = tk.Button(self.nav_inner, command=lambda k=key: self.go(k),
+                          anchor="e", bg=NAVY_2, fg=SIDE_TEXT, activebackground=BLUE,
+                          activeforeground="white", relief="flat", bd=0, takefocus=True,
+                          font=(FONT, 11, "bold"), padx=18, pady=NAV_PADY if ic else NAV_PADY + 2, cursor="hand2", **look)
+            b.pack(fill="x", padx=10, pady=1)
+            b.bind("<Enter>", lambda e, k=key: self.nav_hover(k, True))
+            b.bind("<Leave>", lambda e, k=key: self.nav_hover(k, False))
+            # الأسهم تتحرّك في القائمة (RTL: يمين = لأعلى، شمال = لأسفل)
+            b.bind("<Up>", lambda e: (self.nav_move(-1), "break")[1])
+            b.bind("<Down>", lambda e: (self.nav_move(1), "break")[1])
+            b.bind("<Right>", lambda e: (self.nav_move(-1), "break")[1])
+            b.bind("<Left>", lambda e: (self.nav_move(1), "break")[1])
+            self.nav_buttons[key] = b
+        self.nav_inner.bind("<Configure>", lambda e: self._fit_nav())
+        self.nav_canvas.bind("<Configure>", lambda e: self._fit_nav())
         self.active_key = None
         # منطقة المحتوى داخل Canvas بشرائط تمرير (رأسي + أفقي) عشان كل الصفحة تبان على أي مقاس شاشة
         self.content_wrap = tk.Frame(shell, bg=BG)
@@ -2530,6 +2551,7 @@ class CenterApp:
         self.content_canvas.bind("<Configure>", lambda e: self._fit_content())
         self.root.bind("<Configure>", self._on_root_config, add="+")
         self._bind_wheel()
+        self.root.after(80, self._fit_nav)
 
     def _side_width(self):
         """عرض القائمة الجانبية حسب عرض النافذة (تضيق تلقائيًا على الشاشات الصغيرة)."""
@@ -2558,6 +2580,7 @@ class CenterApp:
         except Exception:
             pass
         self._fit_content()
+        self._fit_nav()
 
     def _fit_content(self):
         """يخلي المحتوى يملأ المكان المتاح، ويضيف تمرير لما يكون أطول/أعرض من الشاشة."""
@@ -2598,8 +2621,9 @@ class CenterApp:
     def _on_wheel(self, e):
         try:
             w = self.root.winfo_containing(e.x_root, e.y_root)
-            if w is None or not str(w).startswith(str(self.content_canvas)):
+            if w is None:
                 return
+            sw = str(w)
             num = getattr(e, "num", 0)
             if num == 4:
                 step = -1
@@ -2607,9 +2631,79 @@ class CenterApp:
                 step = 1
             else:
                 step = -1 if (getattr(e, "delta", 0) or 0) > 0 else 1
-            self.content_canvas.yview_scroll(step * 3, "units")
+            if sw.startswith(str(self.content_canvas)):
+                self.content_canvas.yview_scroll(step * 3, "units")
+            elif getattr(self, "nav_canvas", None) is not None and sw.startswith(str(self.nav_canvas)):
+                self.nav_canvas.yview_scroll(step * 3, "units")
         except Exception:
             pass
+
+    def _fit_nav(self):
+        """يضبط تمرير القائمة الجانبية ويخفي المسطرة لو القائمة كلها بانية أصلاً."""
+        try:
+            c = self.nav_canvas
+            cw, ch = max(1, c.winfo_width()), max(1, c.winfo_height())
+            rh = max(1, self.nav_inner.winfo_reqheight())
+            c.configure(scrollregion=(0, 0, cw, max(ch, rh)))
+            c.itemconfig(self.nav_inner_id, width=cw)
+            need = rh > ch + 1
+            if need != self._nav_vsb_shown:
+                self._nav_vsb_shown = need
+                self.nav_vsb.grid() if need else self.nav_vsb.grid_remove()
+        except Exception:
+            pass
+
+    def _nav_keys(self):
+        """ترتيب أزرار القائمة الجانبية الظاهرة للمستخدم الحالي."""
+        return [k for k, _ic, _lb in self.NAV if k in self.nav_buttons]
+
+    def nav_move(self, step):
+        """ينقل التحديد في القائمة الجانبية بالأسهم، وينزّل القائمة لو الرابط تحت الشاشة."""
+        keys = self._nav_keys()
+        if not keys:
+            return
+        cur = self.active_key if self.active_key in keys else keys[0]
+        i = keys.index(cur)
+        j = max(0, min(len(keys) - 1, i + step))
+        k = keys[j]
+        if k != self.active_key:
+            self.go(k)
+        self._nav_reveal(k)
+
+    def _nav_reveal(self, key):
+        """ينزّل/يطلّع القائمة الجانبية عشان الزرار المحدد يبان بالكامل."""
+        b = self.nav_buttons.get(key)
+        if b is None:
+            return
+        try:
+            c = self.nav_canvas
+            c.update_idletasks()
+            ch = max(1, c.winfo_height())
+            rh = max(1, self.nav_inner.winfo_reqheight())
+            if rh <= ch:
+                return
+            top, bot = b.winfo_y(), b.winfo_y() + b.winfo_height()
+            vt = c.canvasy(0)
+            vb = vt + ch
+            if top < vt:
+                c.yview_moveto(max(0.0, top / rh))
+            elif bot > vb:
+                c.yview_moveto(max(0.0, min(1.0, (bot - ch) / rh)))
+        except Exception:
+            pass
+
+    def _menu_arrow(self, step):
+        """الأسهم تتحرّك في القائمة الجانبية — من غير ما تعطّل الجداول والخانات النشطة."""
+        try:
+            w = self.root.focus_get()
+            cls = w.winfo_class() if w is not None else ""
+        except Exception:
+            cls = ""
+        if cls in ("Entry", "TEntry", "Text", "Treeview", "Listbox",
+                   "TCombobox", "Spinbox", "TSpinbox"):
+            return None
+        self.nav_move(step)
+        return "break"
 
     def rebuild_ui(self):
         """يعيد بناء الواجهة بعد تغيير الألوان أو الشكل أو اللغة مع البقاء في نفس الصفحة."""
@@ -2651,6 +2745,9 @@ class CenterApp:
         # التمرير بالكيبورد (لو مفيش جدول/خانة مفتوحة بتمتص المفاتيح)
         self.root.bind("<Prior>", lambda e: self._scroll_page(-1))      # PageUp
         self.root.bind("<Next>", lambda e: self._scroll_page(1))        # PageDown
+        # الأسهم ↑↓ تتحرّك في القائمة الجانبية وتنزّلها لو أطول من الشاشة
+        self.root.bind("<Up>", lambda e: self._menu_arrow(-1))
+        self.root.bind("<Down>", lambda e: self._menu_arrow(1))
         self.root.bind("<Control-Home>", lambda e: self.content_canvas.yview_moveto(0))
         self.root.bind("<Control-End>", lambda e: self.content_canvas.yview_moveto(1))
         self.root.bind("<Alt-Home>", lambda e: self.go("home"))
@@ -2698,6 +2795,7 @@ class CenterApp:
                 ("Alt + Home", "الرجوع للصفحة الرئيسية"),
                 ("Tab  /  Shift + Tab", "التنقّل بين الأزرار والخانات"),
                 ("Space  /  Enter", "تشغيل الزرار اللي عليه التركيز"),
+                ("↑  /  ↓", "التحرّك في القائمة الجانبية (وتنزّلها لو أطول من الشاشة)"),
                 ("↑ ↓ ← →", "التحرّك جوه الجداول والقوائم"),
                 ("PageUp / PageDown", "تمرير الصفحة لأعلى / لأسفل"),
                 ("Ctrl + Home / Ctrl + End", "أول الصفحة / آخر الصفحة"),
@@ -6562,11 +6660,23 @@ if __name__ == "__main__":
 
 
 # ============================================================================
-#  ★ نقطة نهاية آخر تحديث (END OF LAST UPDATE) — الإصدار 2.8.0 ★
+#  ★ نقطة نهاية آخر تحديث (END OF LAST UPDATE) — الإصدار 2.9.0 ★
 # ----------------------------------------------------------------------------
 #  كل الكود فوق السطر ده خلص ومتّفق عليه. أي إضافة أو تعديل جديد يبدأ من هنا.
 #
-#  آخر حاجة اتعملت: الواجهة تبان كاملة على أي شاشة + الكيبورد (2.8.0) —
+#  آخر حاجة اتعملت: مسطرة تمرير + تنقّل بالأسهم في القائمة الجانبية (2.9.0) —
+#    • nav_wrap/nav_canvas/nav_vsb/nav_inner/nav_inner_id : أزرار القائمة الجانبية
+#      جوه Canvas بمسطرة تمرير رأسية، فبتوصل لآخر القائمة على أي مقاس شاشة.
+#    • _fit_nav()      : يضبط scrollregion + يخفي المسطرة تلقائيًا لو القائمة كلها بانية.
+#    • nav_move()      : ينقل التحديد في القائمة الجانبية (لفوق/لأسفل) بحدود آمنة.
+#    • _nav_reveal()   : ينزّل/يطلّع القائمة عشان العنصر المختار يبان بالكامل.
+#    • _menu_arrow()   : ↑/↓ تتحرّك في القائمة — وبتسيب المفاتيح للجداول/الخانات
+#      لما يكون التركيز عليها (Entry/Treeview/Listbox/…) عشان ما تعطّلهاش.
+#    • bind_keys()     : <Up>/<Down> على النافذة، وكل زرار قائمة عنده ↑↓→←.
+#    • _on_wheel()     : عجلة الفأرة بتعمل تمرير للقائمة الجانبية كمان.
+#    • shortcuts_dialog() : سطر جديد «↑ / ↓ — التحرّك في القائمة الجانبية».
+#
+#  قبل كده (2.8.0): الواجهة تبان كاملة على أي شاشة + الكيبورد —
 #    • fit_to_screen()      : بيقيس الشاشة الحقيقية ويفتح بمقاس مضمون إنه يدخل فيها.
 #    • content_canvas/content_vsb/content_hsb : منطقة المحتوى جوه Canvas بشريطي تمرير.
 #    • _fit_content()/_show_scrollbars() : يخلي المحتوى يملأ المتاح + يخفي الشريط لو مش محتاجه.

@@ -19,11 +19,11 @@ for line in io.open(SRC, encoding="utf-8-sig"):
         break
 
 # آخر نقطة توقف (حدّثها بعد كل بناء/رفع)
-LAST_COMMIT = "8d2fa9f — الواجهة تبان كاملة على أي شاشة + إصلاح اختصارات الكيبورد (2.8.0)"
+LAST_COMMIT = "pending — مسطرة القائمة الجانبية + التنقّل بالأسهم (2.9.0)"
 LAST_RUN = "44104691904"
 EXE_BYTES = "16,372,059"
 EXE_MD5 = "205bea10828b8f6cb663036f9564ce1f"
-PKG_NAME = "KhadamatMisr_v2.8.0_windows.zip"
+PKG_NAME = "KhadamatMisr_v2.9.0_windows.zip"
 PKG_FILES = "568"
 SHOTS = "32"
 
@@ -103,6 +103,12 @@ def main():
     w("  (قائمة المستخدم + `Ctrl+F`). **إصلاح**: اختصارات `F1…F11` كانت `bind(\"F1\")` بدون أقواس")
     w("  فماكانتش شغّالة → `bind(\"<F1>\")`. نافذة `shortcuts_dialog` (`Shift+F1`). النوافذ المنبثقة")
     w("  بتتصغّر لو أكبر من الشاشة (`_clamp_size`/`_minsize`).")
+    w("- 2.9.0: **مسطرة تمرير + تنقّل بالأسهم في القائمة الجانبية** — أزرار القائمة بقت جوه")
+    w("  `Canvas` بمسطرة تمرير (`nav_wrap`/`nav_canvas`/`nav_vsb`/`nav_inner`)، فبتوصل لآخر")
+    w("  القائمة على أي مقاس شاشة. `_fit_nav` بيخفي المسطرة تلقائيًا لو القائمة كلها بانية.")
+    w("  `nav_move`/`_nav_reveal` ينقلوا التحديد بـ ↑↓ وينزّلوا القائمة للعنصر المختار.")
+    w("  `_menu_arrow` بيحمي الجداول/الخانات (لو التركيز على `Entry`/`Treeview`/… بيسيب المفاتيح لها).")
+    w("  عجلة الفأرة بتعمل تمرير للقائمة الجانبية كمان، وسطر جديد في `shortcuts_dialog`.")
     w("")
     w("### لسه (Pending) — ابدأ من هنا")
     w("")
@@ -169,6 +175,7 @@ def main():
     w("| التقارير | `show_reports` · `build_report` |")
     w("| المظهر والثيمات | `appearance_dialog` · `apply_appearance` · `apply_theme` · `apply_font` · `apply_font_size` · `apply_btn_style` · `toggle_theme` · `bind_keys` · `cycle_page` |")
     w("| ملاءمة الشاشات + الكيبورد | `fit_to_screen` · `_clamp_size` · `_minsize` · `_fit_content` · `_show_scrollbars` · `_side_width` · `_on_root_config` · `_on_wheel` · `toggle_fullscreen` · `shortcuts_dialog` · `_scroll_page` |")
+    w("| القائمة الجانبية (تمرير + أسهم) | `build_shell` (nav_canvas/nav_vsb/nav_inner) · `_fit_nav` · `nav_move` · `_nav_reveal` · `_menu_arrow` · `nav_hover` · `go` |")
     w("| المستخدمون | `users_dialog` · `user_edit_dialog` |")
     w("| الشبكة (LAN) | `net_dialog` · `refresh_net_status` · `auto_refresh` · `start_net_server` (خارج الكلاس) |")
     w("| سجل العمليات | `audit_dialog` · `net.audit_rows` · `net.fetch_audit` |")
@@ -192,8 +199,8 @@ def main():
     w("  راجع `_on_root_config` + `_fit_content`.")
     w("- أي تعديل: عدّل في `KhadamatMisr/` → انسخ للـ `repo/` → commit → push `khadamat-misr` → نزّل الـ artifact → أعد بناء الحزمة واللقطات.")
     w("- اختبارات قبل التسليم: `verify_clock.py` (23) · `verify_new.py` (56) · `verify_responsive.py` ·")
-    w("  `audit_pages.py` · `verify_net.py` (34) · `verify_lan_app.py` (19) · `verify_lan_2proc.py` (6) ·")
-    w("  `verify_backup.py` (29) · `verify_backup_gui.py` (9) · `verify_notes_gui.py` (25).")
+    w("  `verify_navmenu.py` (22) · `audit_pages.py` · `verify_net.py` (34) · `verify_lan_app.py` (19) ·")
+    w("  `verify_lan_2proc.py` (6) · `verify_backup.py` (29) · `verify_backup_gui.py` (9) · `verify_notes_gui.py` (25).")
     w("")
 
     io.open(OUT, "w", encoding="utf-8").write("\n".join(buf) + "\n")
