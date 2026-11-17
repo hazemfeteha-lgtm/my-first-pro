@@ -19,13 +19,13 @@ for line in io.open(SRC, encoding="utf-8-sig"):
         break
 
 # آخر نقطة توقف (حدّثها بعد كل بناء/رفع)
-LAST_COMMIT = "29588a3 — مسطرتا شاشة المظهر + إصلاح ملء الشاشة المتكيّف + توحيد اسم موظفي الجهات (2.10.0)"
-LAST_RUN = "44117522119"
-EXE_BYTES = "16,378,830"
-EXE_MD5 = "734b7de17f9bfa1132e3a51c2671af7f"
-PKG_NAME = "KhadamatMisr_v2.10.0_windows.zip"
-PKG_FILES = "580"
-SHOTS = "44"
+LAST_COMMIT = "2701f17 — ثيم «ذهبي فاخر» (Luxury Gold) + شكل أزرار ذهبي + خطوط Cairo/Tajawal + شاشة دخول متدرّجة (2.11.0)"
+LAST_RUN = "44128362249"
+EXE_BYTES = "16,686,973"
+EXE_MD5 = "84a5b1720829fcbc71afb6403fccfce9"
+PKG_NAME = "KhadamatMisr_v2.11.0_windows.zip"
+PKG_FILES = "595"
+SHOTS = "52"
 
 
 def structure(path):
@@ -69,7 +69,7 @@ def main():
     w(f"| آخر بناء ناجح | GitHub Actions run `{LAST_RUN}` |")
     w(f"| ملف exe | `KhadamatMisr.exe` · {EXE_BYTES} بايت · MD5 `{EXE_MD5}` |")
     w(f"| الحزمة | `{PKG_NAME}` · {PKG_FILES} ملف |")
-    w(f"| عدد اللقطات | {SHOTS} لقطة + `all_screens.png` + `gallery.html` |")
+    w(f"| عدد اللقطات | {SHOTS} لقطة (فولدر `screenshots/` جوه الحزمة) |")
     w("")
     w("### خلص (Done)")
     w("")
