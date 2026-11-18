@@ -22,7 +22,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.11.4"
+APP_VERSION = "2.11.5"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -3612,14 +3612,50 @@ class CenterApp:
         st = self.net_status_text()
         return base + ("      " + st if st else "")
 
+    def _stations_lamps(self, detail, max_age=90):
+        """ترجع نصًا بلمبة (🟢/🔴) لكل محطة حسب آخر ظهور."""
+        if not detail:
+            return ""
+        now = datetime.now()
+        parts = []
+        try:
+            items = sorted(detail.items())
+        except Exception:
+            items = list(detail.items())
+        for name, ts in items:
+            ok = False
+            try:
+                last = datetime.strptime(str(ts), "%Y-%m-%d %H:%M:%S")
+                ok = (now - last).total_seconds() <= max_age
+            except Exception:
+                ok = False
+            parts.append(f"{name} {'🟢' if ok else '🔴'}")
+        return "   ".join(parts)
+
     def net_status_text(self):
         if not netmod or NET_MODE == netmod.MODE_STANDALONE:
             return ""
         if NET_MODE == netmod.MODE_SERVER:
-            return (f"🟢 الجهاز الرئيسي (سيرفر) — {netmod.local_ip()}:{NET_CFG.get('port')}"
-                    f"   |   محطات متصلة: {NET_STATUS.get('stations', 0)}")
+            detail = {}
+            try:
+                if NET_SERVER and getattr(NET_SERVER, "stations", None):
+                    detail = dict(NET_SERVER.stations)
+            except Exception:
+                detail = {}
+            lamps = self._stations_lamps(detail)
+            base = f"🟢 السيرفر — {netmod.local_ip()}:{NET_CFG.get('port')}"
+            if lamps:
+                return base + "   |   الأجهزة: " + lamps
+            return base + "   |   لا توجد أجهزة متصلة"
         host = NET_CFG.get("server_host") or "?"
-        return (f"🟢 متصل بالجهاز الرئيسي: {host}") if NET_STATUS.get("ok") else (f"🔴 غير متصل بالجهاز الرئيسي: {host}")
+        lamp = "🟢 متصل" if NET_STATUS.get("ok") else "🔴 مفصول"
+        txt = f"{lamp} بالسيرفر: {host}"
+        detail = NET_STATUS.get("stations_detail") or {}
+        if NET_STATUS.get("ok") and detail:
+            lamps = self._stations_lamps(detail)
+            if lamps:
+                txt += "   |   الأجهزة: " + lamps
+        return txt
 
     def refresh_net_status(self):
         if not netmod or NET_MODE == netmod.MODE_STANDALONE:
@@ -3629,11 +3665,18 @@ class CenterApp:
                 info = netmod.ping(NET_CFG, timeout=3)
                 NET_STATUS["ok"] = True
                 NET_STATUS["stations"] = info.get("stations", 0)
+                NET_STATUS["stations_detail"] = info.get("stations_detail") or {}
             except Exception:
                 NET_STATUS["ok"] = False
+                NET_STATUS["stations_detail"] = {}
         else:
             NET_STATUS["ok"] = True
-            NET_STATUS["stations"] = len(NET_SERVER.stations) if NET_SERVER else 0
+            try:
+                detail = dict(NET_SERVER.stations) if NET_SERVER and getattr(NET_SERVER, "stations", None) else {}
+            except Exception:
+                detail = {}
+            NET_STATUS["stations"] = len(detail)
+            NET_STATUS["stations_detail"] = detail
         try:
             if getattr(self, "footer_lbl", None):
                 self.footer_lbl.config(text=self.footer_text(),
@@ -3663,6 +3706,8 @@ class CenterApp:
             try:
                 info = netmod.ping(NET_CFG, timeout=3)
                 NET_STATUS["ok"] = True
+                NET_STATUS["stations"] = info.get("stations", 0)
+                NET_STATUS["stations_detail"] = info.get("stations_detail") or {}
                 v = info.get("version")
                 if getattr(self, "_net_version", None) is None:
                     self._net_version = v
@@ -3676,6 +3721,7 @@ class CenterApp:
                         except Exception: pass
             except Exception:
                 NET_STATUS["ok"] = False
+                NET_STATUS["stations_detail"] = {}
         if getattr(self, "_auto_job", None):
             try: self.root.after_cancel(self._auto_job)
             except Exception: pass
@@ -4280,6 +4326,7 @@ class CenterApp:
             try: old.destroy()
             except Exception: pass
         self._notes_banner = None
+        self._note_rows = {}
         if not pending:
             return
         try:
@@ -4295,16 +4342,23 @@ class CenterApp:
         tk.Label(head, text=f"📢  ملاحظات وتعليمات جديدة ({len(pending)})", bg=AMBER, fg=NAVY,
                  font=(FONT, 12, "bold"), anchor="e").pack(side="right")
         for r in pending:
-            row = tk.Frame(bar, bg=AMBER); row.pack(fill="x", padx=12, pady=3)
-            tk.Button(row, text="✅ قدمها", command=lambda i=r[0]: self.mark_note_done(i),
-                      bg=GREEN, fg="white", activebackground=NAVY, activeforeground="white",
-                      relief="flat", bd=0, font=(FONT, 9, "bold"), padx=12, pady=3,
-                      cursor="hand2").pack(side="left", padx=(0, 10))
+            # أول ما توصل: لون الرسالة أحمر — وبعد «تم»: تتحول أصفر
+            row_bg = "#ffcdd2"
+            txt_fg = "#b71c1c"
+            row = tk.Frame(bar, bg=row_bg, highlightbackground="#e57373", highlightthickness=1)
+            row.pack(fill="x", padx=12, pady=3)
+            done_btn = tk.Button(row, text="✅ قدمها", command=lambda i=r[0]: self.mark_note_done(i),
+                                 bg=GREEN, fg="white", activebackground=NAVY, activeforeground="white",
+                                 relief="flat", bd=0, font=(FONT, 9, "bold"), padx=12, pady=3,
+                                 cursor="hand2")
+            done_btn.pack(side="left", padx=(0, 10), pady=4)
             txt = (r[1] or "")
             if (r[3] or "") == "عاجلة":
-                txt = "⚠️ " + txt
-            tk.Label(row, text=txt, bg=AMBER, fg=INK, font=(FONT, 11, "bold"),
-                     anchor="e", justify="right", wraplength=980).pack(side="right", fill="x", expand=True)
+                txt = "⚠️ عاجل: " + txt
+            msg = tk.Label(row, text=txt, bg=row_bg, fg=txt_fg, font=(FONT, 11, "bold"),
+                           anchor="e", justify="right", wraplength=980)
+            msg.pack(side="right", fill="x", expand=True, padx=8, pady=6)
+            self._note_rows[r[0]] = (row, msg, done_btn)
         tk.Frame(bar, bg=AMBER, height=6).pack()
         self._notes_banner = bar
 
@@ -4316,10 +4370,11 @@ class CenterApp:
             return True
 
     def _beep(self, urgent=False):
-        """صوت تنبيه: على ويندوز صوت النظام، وعلى لينكس جرس Tk."""
+        """صوت تنبيه: على ويندوز صوت نظام أعلى وواضح، وعلى لينكس جرس Tk."""
         try:
             import winsound
-            winsound.MessageBeep(winsound.MB_ICONHAND if urgent else winsound.MB_ICONEXCLAMATION)
+            # صوت نظام ويندوز أعلى وواضح (SystemHand)
+            winsound.PlaySound("SystemHand", winsound.SND_ALIAS | winsound.SND_ASYNC)
             return
         except Exception:
             pass
@@ -4334,7 +4389,7 @@ class CenterApp:
             return
         self._beep(urgent)
         if urgent:
-            try: self.root.after(450, lambda: self._beep(True))
+            try: self.root.after(500, lambda: self._beep(True))
             except Exception: pass
 
     def toggle_note_sound(self):
@@ -4345,19 +4400,38 @@ class CenterApp:
     def mark_note_done(self, note_id):
         """يعلّم الملاحظة كـ «تم» (من أي وحدة)."""
         try:
+            nid = int(note_id)
+        except Exception:
+            nid = note_id
+        try:
             if netmod and NET_MODE == netmod.MODE_CLIENT:
-                res = netmod.mark_note_done(NET_CFG, note_id)
+                res = netmod.mark_note_done(NET_CFG, nid)
                 if not res.get("ok"):
                     messagebox.showerror("خطأ", res.get("error") or "تعذر تحديث الملاحظة")
                     return
             else:
                 with db() as con:
                     con.execute("UPDATE notes SET status='done', done_by=?, done_at=? WHERE id=?",
-                                (self.user["username"], now_stamp(), int(note_id)))
+                                (self.user["username"], now_stamp(), nid))
         except Exception as ex:
             messagebox.showerror("خطأ", f"تعذر تحديث الملاحظة:\n{ex}"); return
         if getattr(self, "active_key", None) == "notes" and getattr(self, "notes_tree", None):
             self.load_notes()
+        # بعد «تم»: خلّي الرسالة تصفر شوية ثم تختفي من شريط الجديد
+        row_info = (getattr(self, "_note_rows", None) or {}).get(nid)
+        if row_info:
+            row, msg, btn = row_info
+            try:
+                if row.winfo_exists():
+                    row.config(bg="#fff59d", highlightbackground="#fbc02d", highlightthickness=1)
+                if msg.winfo_exists():
+                    msg.config(bg="#fff59d", fg="#7a5d00")
+                if btn.winfo_exists():
+                    btn.config(text="تم ✓", bg=AMBER, fg=NAVY, state="disabled", cursor="arrow")
+                self.root.after(4000, self.build_notes_banner)
+                return
+            except Exception:
+                pass
         self.build_notes_banner()
 
     def note_targets(self):
@@ -5886,6 +5960,7 @@ class CenterApp:
         self.btn(bx, "حذف المحدد", lambda: self.delete_selected("gov_attendance", self.g_tree), RED).pack(side="right", padx=4)
         self.btn(bx, "📤 استخراج بيانات", self.export_gov_att, PRIMARY).pack(side="right", padx=(18, 4))
         self.btn(bx, "📥 إدراج بيانات", self.import_gov_att, PURPLE).pack(side="right", padx=4)
+        self.btn(bx, "🖨️ طباعة حضور اليوم", self.print_gov_today, AMBER).pack(side="right", padx=4)
         self.g_tree = self.make_tree(self.content, ("person", "date", "in", "out", "hrs", "notes"),
                                      ("الموظف / الجهة", "التاريخ", "الدخول", "الخروج", "ساعات العمل", "ملاحظات"),
                                      (240, 100, 95, 95, 100, 240), 10)
@@ -5969,6 +6044,23 @@ class CenterApp:
             names = {r[0] for r in con.execute(sql1, args) if r[0]}
             names |= {r[0] for r in con.execute(sql2, args) if r[0]}
         return sorted(names)
+
+    def print_gov_today(self):
+        """طباعة سريعة لحضور وانصراف جميع الجهات لليوم الحالي."""
+        iso = date.today().isoformat()
+        secs = gov_att_sections(iso, iso)
+        if not secs or not any(x.get("rows") for x in secs):
+            messagebox.showinfo("لا توجد بيانات", "لا يوجد حضور مسجّل لليوم حتى الآن.", parent=self.root)
+            return
+        title = f"حضور وانصراف الجهات — اليوم ({today_text()})"
+        secs = [dict(x) for x in secs]
+        if secs:
+            secs[0] = dict(secs[0], title="تفاصيل حضور اليوم لكل الجهات")
+        try:
+            open_html(sections_html(title, secs), "gov_today")
+        except Exception as ex:
+            messagebox.showerror("خطأ", f"تعذر تجهيز الطباعة:\n{ex}")
+
 
     def gov_report_dialog(self):
         """تقرير حضور وانصراف موظفي الجهات: بالمدة / بالجهة / بالاسم — طباعة أو Excel."""
