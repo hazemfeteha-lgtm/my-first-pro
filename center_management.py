@@ -22,7 +22,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.11.0"
+APP_VERSION = "2.11.1"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -3354,7 +3354,36 @@ class CenterApp:
         if is_self:
             c_adm.configure(state="disabled"); c_act.configure(state="disabled")
 
-        pm = self.panel(win); pm.pack(fill="both", expand=True, padx=16, pady=6)
+        pm_outer = self.panel(win); pm_outer.pack(fill="both", expand=True, padx=16, pady=6)
+        # مسطرة جانبية عشان كل الصلاحيات تظهر لأي عدد أقسام
+        pm_canvas = tk.Canvas(pm_outer, bg=WHITE, highlightthickness=0, bd=0)
+        pm_vsb = ttk.Scrollbar(pm_outer, orient="vertical", command=pm_canvas.yview)
+        pm_canvas.configure(yscrollcommand=pm_vsb.set)
+        pm_vsb.pack(side="left", fill="y")
+        pm_canvas.pack(side="right", fill="both", expand=True)
+        pm = tk.Frame(pm_canvas, bg=WHITE)
+        pm_win = pm_canvas.create_window((0, 0), window=pm, anchor="nw")
+        def _pm_fit(_e=None):
+            try:
+                pm_canvas.configure(scrollregion=pm_canvas.bbox("all"))
+                pm_canvas.itemconfig(pm_win, width=pm_canvas.winfo_width())
+            except Exception:
+                pass
+        pm.bind("<Configure>", _pm_fit)
+        pm_canvas.bind("<Configure>", _pm_fit)
+        def _pm_wheel(e):
+            try:
+                if getattr(e, "num", 0) == 4:
+                    pm_canvas.yview_scroll(-3, "units")
+                elif getattr(e, "num", 0) == 5:
+                    pm_canvas.yview_scroll(3, "units")
+                else:
+                    pm_canvas.yview_scroll(-3 if getattr(e, "delta", 0) > 0 else 3, "units")
+            except Exception:
+                pass
+            return "break"
+        for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            win.bind(seq, _pm_wheel, add="+")
         tk.Label(pm, text="الصلاحيات حسب القسم", bg=WHITE, fg=INK, font=(FONT, 11, "bold")).grid(row=0, column=0, columnspan=5, sticky="e", padx=14, pady=(8, 2))
         for col, lv in zip((3, 2, 1, 0), LEVELS):
             tk.Label(pm, text=LEVEL_LABEL[lv], bg=WHITE, fg=MUTED, font=(FONT, 9, "bold")).grid(row=1, column=col, padx=8, pady=2)
