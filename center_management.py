@@ -22,7 +22,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.11.3"
+APP_VERSION = "2.11.4"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -3681,6 +3681,22 @@ class CenterApp:
             except Exception: pass
         self._auto_job = self.root.after(max(5, secs or 20) * 1000, self.auto_refresh)
 
+    def poll_notes(self):
+        """تحقق دوري من الملاحظات الجديدة في كل الأوضاع (مستقل/سيرفر/محطة) عشان تظهر فورًا مع صوت."""
+        try:
+            if self.root.winfo_exists():
+                self.build_notes_banner()
+        except Exception:
+            pass
+        if getattr(self, "_notes_poll_job", None):
+            try: self.root.after_cancel(self._notes_poll_job)
+            except Exception: pass
+        try:
+            if self.root.winfo_exists():
+                self._notes_poll_job = self.root.after(15000, self.poll_notes)
+        except Exception:
+            pass
+
     def net_dialog(self):
         if not self.need_admin():
             return
@@ -3830,6 +3846,8 @@ class CenterApp:
             try: self.root.after_cancel(self._tick_job)
             except Exception: pass
         self._tick_job = self.root.after(30000, self.tick)
+        if not getattr(self, "_notes_poll_job", None):
+            self.poll_notes()
         if netmod and NET_MODE != netmod.MODE_STANDALONE:
             self.refresh_net_status()
             if not getattr(self, "_auto_job", None):
@@ -4235,13 +4253,8 @@ class CenterApp:
 
     def build_notes_banner(self):
         """شريط أعلى الشاشة: الملاحظات الجديدة الموجهة لهذه الوحدة مع زر «قدمها»."""
-        old = getattr(self, "_notes_banner", None)
-        if old is not None:
-            try: old.destroy()
-            except Exception: pass
-            self._notes_banner = None
         pending = self._pending_notes(True)
-        # ---- تنبيه بصوت عند وصول ملاحظة جديدة (مش أول تحميل، ومش عند التنقّل) ----
+        # ---- تنبيه بصوت عند وصول ملاحظة جديدة (مش أول تحميل) ----
         ids = {r[0] for r in pending}
         fresh = ids - getattr(self, "_notes_seen", set())
         first = not getattr(self, "_notes_init", False)
@@ -4250,9 +4263,29 @@ class CenterApp:
         if fresh and not first:
             urgent = any((r[3] or "") == "عاجلة" for r in pending if r[0] in fresh)
             self._play_note_sound(urgent)
+
+        sig = tuple((r[0], r[1], r[2], r[3]) for r in pending)
+        old = getattr(self, "_notes_banner", None)
+        old_ok = old is not None
+        if old_ok:
+            try:
+                old_ok = bool(old.winfo_exists())
+            except Exception:
+                old_ok = False
+        if sig == getattr(self, "_notes_sig", None) and old_ok:
+            return
+        self._notes_sig = sig
+
+        if old_ok:
+            try: old.destroy()
+            except Exception: pass
+        self._notes_banner = None
         if not pending:
             return
-        kids = self.content.winfo_children()
+        try:
+            kids = [w for w in self.content.winfo_children() if w.winfo_exists()]
+        except Exception:
+            kids = []
         bar = tk.Frame(self.content, bg=AMBER)
         if kids:
             bar.pack(fill="x", padx=24, pady=(10, 2), before=kids[0])
