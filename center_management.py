@@ -22,7 +22,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.11.1"
+APP_VERSION = "2.11.2"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -4893,7 +4893,10 @@ class CenterApp:
         sel = tree.selection()
         if not sel:
             messagebox.showwarning("اختر سجلًا", "حدد السجل المطلوب تعديله من الجدول أولًا."); return
-        rid = int(sel[0])
+        try:
+            rid = int(sel[0])
+        except (TypeError, ValueError):
+            messagebox.showwarning("اختر سجلًا", "حدد سجل حضور/بيانات (وليس عنوان مجموعة) للتعديل."); return
         title, fields = self.EDIT_SPECS[table]
         with db() as con:
             row = con.execute(f"SELECT {','.join(_ident(f[0]) for f in fields)} FROM {_ident(table)} WHERE id=?", (rid,)).fetchone()
@@ -4965,10 +4968,14 @@ class CenterApp:
         sel = tree.selection()
         if not sel:
             messagebox.showwarning("اختر سجلًا", "حدد السجل المطلوب حذفه من الجدول أولًا."); return
+        try:
+            rid = int(sel[0])
+        except (TypeError, ValueError):
+            messagebox.showwarning("اختر سجلًا", "حدد سجل حضور/بيانات (وليس عنوان مجموعة) للحذف."); return
         if not messagebox.askyesno("تأكيد الحذف", "هل تريد حذف السجل المحدد نهائيًا؟"):
             return
         with db() as con:
-            con.execute(f"DELETE FROM {_ident(table)} WHERE id=?", (int(sel[0]),))
+            con.execute(f"DELETE FROM {_ident(table)} WHERE id=?", (rid,))
         self._reload(table, tree)
 
     # ---------- الجرد ----------
@@ -5821,7 +5828,7 @@ class CenterApp:
     # ---------- حضور وانصراف الجهات ----------
     def show_gov(self):
         self.page_title("🏛️ حضور وانصراف الجهات",
-                        "اضغط على اسم الجهة فتفتح قائمة موظفيها، اختر الموظف وسجّل دخول أو خروج أو ملاحظة (ولو موظف جديد اكتب اسمه)")
+                        "اضغط على اسم الجهة لتسجيل موظفيها — وعرض «اليوم» يجمّع حضور كل الجهات مقسّمًا بالجهة بدون ما يختفي")
         self.gov_entity = tk.StringVar(value=getattr(self, "_last_gov", GOV_ENTITIES[0]))
         chips = tk.Frame(self.content, bg=BG); chips.pack(fill="x", padx=24, pady=(0, 4))
         self.gov_chips = {}
@@ -5834,9 +5841,10 @@ class CenterApp:
             self.gov_chips[ent] = b
         bar = self.panel(); bar.pack(fill="x", padx=24, pady=(2, 2))
         top = tk.Frame(bar, bg=WHITE); top.pack(fill="x", padx=12, pady=(8, 2))
-        self.g_title = tk.Label(top, text="", bg=WHITE, fg=BLUE, font=(FONT, 12, "bold")); self.g_title.pack(side="right")
-        self.g_view = tk.StringVar(value="all")
-        for val, label in (("today", "اليوم فقط"), ("all", "كل السجلات")):
+        self.g_title = tk.Label(top, text="", bg=WHITE, fg=BLUE, font=(FONT, 11, "bold"), wraplength=520, justify="right")
+        self.g_title.pack(side="right", fill="x", expand=True)
+        self.g_view = tk.StringVar(value="today")
+        for val, label in (("today", "اليوم (كل الجهات)"), ("all", "كل السجلات (للجهة المختارة)")):
             ttk.Radiobutton(top, text=label, value=val, variable=self.g_view, command=self.gov_reload).pack(side="left", padx=6)
         bx = tk.Frame(bar, bg=WHITE); bx.pack(fill="x", padx=12, pady=(2, 10))
         self.btn(bx, "🖨️ طباعة تقارير", self.gov_report_dialog, AMBER).pack(side="right", padx=(0, 4))
@@ -5846,8 +5854,12 @@ class CenterApp:
         self.btn(bx, "📤 استخراج بيانات", self.export_gov_att, PRIMARY).pack(side="right", padx=(18, 4))
         self.btn(bx, "📥 إدراج بيانات", self.import_gov_att, PURPLE).pack(side="right", padx=4)
         self.g_tree = self.make_tree(self.content, ("person", "date", "in", "out", "hrs", "notes"),
-                                     ("اسم الموظف", "التاريخ", "الدخول", "الخروج", "ساعات العمل", "ملاحظات"),
-                                     (200, 100, 95, 95, 100, 260), 10)
+                                     ("الموظف / الجهة", "التاريخ", "الدخول", "الخروج", "ساعات العمل", "ملاحظات"),
+                                     (240, 100, 95, 95, 100, 240), 10)
+        try:
+            self.g_tree.tag_configure("gent", font=(FONT, 10, "bold"), background=SOFT, foreground=PRIMARY)
+        except Exception:
+            pass
         self.g_tree.bind("<Double-1>", lambda e: self.edit_record("gov_attendance", self.g_tree))
         self.gov_select(self.gov_entity.get())
 
@@ -5856,7 +5868,6 @@ class CenterApp:
         for e, b in self.gov_chips.items():
             on = e == ent
             b.config(bg=PRIMARY if on else SOFT, fg="white" if on else TEXT, activebackground=BLUE if on else LINE)
-        self.g_title.config(text=f"سجل حضور وانصراف: {ent}")
         self.gov_reload()
         if open_picker and self.can("gov", "add"):
             self.gov_picker()
@@ -5865,17 +5876,52 @@ class CenterApp:
         if not hasattr(self, "g_tree") or not self.g_tree.winfo_exists():
             return
         ent = self.gov_entity.get()
-        sql = "SELECT id, person, att_date, in_time, out_time, notes FROM gov_attendance WHERE entity=?"
-        args = [ent]
-        if self.g_view.get() == "today":
-            sql += " AND att_date=?"; args.append(date.today().isoformat())
-        with db() as con:
-            att = con.execute(sql + " ORDER BY att_date DESC, id DESC LIMIT 400", args).fetchall()
+        view = self.g_view.get() if hasattr(self, "g_view") else "today"
         self.g_tree.delete(*self.g_tree.get_children())
-        for n, (rid, pn, d, i, o, nt) in enumerate(att):
-            w = _mins(o) - _mins(i) if i and o else None
-            self.g_tree.insert("", "end", iid=str(rid), tags=("odd",) if n % 2 else (),
-                               values=(pn, fmt_iso_date(d), fmt_time(i) or "-", fmt_time(o) or "-", fmt_hours(w), nt or "-"))
+        title = f"الجهة المختارة للتسجيل: {ent}  —  "
+        if view == "today":
+            title += "حضور اليوم لكل الجهات (كل مدخل يظل ظاهرًا ومقسّم حسب الجهة)"
+        else:
+            title += f"كل سجلات: {ent}"
+        try:
+            self.g_title.config(text=title)
+        except Exception:
+            pass
+        if view == "today":
+            iso = date.today().isoformat()
+            with db() as con:
+                att = con.execute(
+                    "SELECT id, entity, person, att_date, in_time, out_time, notes "
+                    "FROM gov_attendance WHERE att_date=? ORDER BY entity, id", (iso,)).fetchall()
+            by_ent = {}
+            for row in att:
+                by_ent.setdefault(row[1], []).append(row)
+            shown = 0
+            for e in GOV_ENTITIES:
+                rows = by_ent.get(e, [])
+                if not rows:
+                    continue
+                parent = f"grp_{shown}_{e}"
+                self.g_tree.insert("", "end", iid=parent, open=True, tags=("gent",),
+                                   values=(f"🏛️ {e}  —  ({len(rows)} حضور اليوم)", "", "", "", "", ""))
+                for n, (rid, _e, pn, d, i, o, nt) in enumerate(rows):
+                    w = _mins(o) - _mins(i) if i and o else None
+                    self.g_tree.insert(parent, "end", iid=str(rid), tags=("odd",) if n % 2 else (),
+                                       values=(pn, fmt_iso_date(d), fmt_time(i) or "-", fmt_time(o) or "-", fmt_hours(w), nt or "-"))
+                shown += 1
+            if not shown:
+                self.g_tree.insert("", "end", iid="empty_info", tags=("gent",),
+                                   values=("لا يوجد حضور مسجّل اليوم لأي جهة حتى الآن — سجّل من أزرار الجهات بالأعلى", "", "", "", "", ""))
+        else:
+            with db() as con:
+                att = con.execute(
+                    "SELECT id, person, att_date, in_time, out_time, notes "
+                    "FROM gov_attendance WHERE entity=? ORDER BY att_date DESC, id DESC LIMIT 400",
+                    (ent,)).fetchall()
+            for n, (rid, pn, d, i, o, nt) in enumerate(att):
+                w = _mins(o) - _mins(i) if i and o else None
+                self.g_tree.insert("", "end", iid=str(rid), tags=("odd",) if n % 2 else (),
+                                   values=(pn, fmt_iso_date(d), fmt_time(i) or "-", fmt_time(o) or "-", fmt_hours(w), nt or "-"))
 
     def _gov_report_names(self, entity=""):
         """أسماء موظفي الجهات (من قاعدة الموظفين ومن سجلات الحضور) لاختيار موظف في تقرير الحضور."""
