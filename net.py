@@ -336,7 +336,8 @@ def login(cfg, username, password):
 def ping(cfg, timeout=4):
     """اختبار اتصال سريع. يرجع dict أو يرفع استثناء."""
     q = urllib.parse.quote(cfg.get("token", ""))
-    return _get(base_url(cfg) + "/ping?token=" + q, timeout)
+    st = urllib.parse.quote(cfg.get("station", "") or "")
+    return _get(base_url(cfg) + "/ping?token=" + q + "&station=" + st, timeout)
 
 
 def server_info(cfg):
@@ -574,9 +575,12 @@ class Server:
                 total = extra.get("total", total)
             except Exception:
                 pass
+        with self.lock:
+            st_map = dict(self.stations)
         return {"version": self.version, "db_mb": round(size, 2),
                 "photos_mb": round(photos, 2), "total": total,
-                "writes": self.write_count, "stations": len(self.stations)}
+                "writes": self.write_count, "stations": len(st_map),
+                "stations_detail": st_map}
 
     def _rpc(self, req):
         sql = req.get("sql") or ""
@@ -603,11 +607,11 @@ class Server:
                 lastrowid = cur.lastrowid or 0
                 rowcount = cur.rowcount
                 c.commit()
+                if station:
+                    self.stations[station] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 if tbl:
                     self.version += 1
                     self.write_count += 1
-                    if station:
-                        self.stations[station] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     up = sql.strip().upper()
                     action = ("DELETE" if up.startswith("DELETE") else
                               "UPDATE" if up.startswith("UPDATE") else "INSERT")
@@ -669,8 +673,15 @@ class Server:
                 q = urllib.parse.parse_qs(u.query)
                 tok = (q.get("token", [""])[0])
                 if u.path == "/ping":
+                    stn = (q.get("station", [""])[0] or "").strip()
+                    if stn and srv._auth(tok):
+                        with srv.lock:
+                            srv.stations[stn] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    with srv.lock:
+                        st_map = dict(srv.stations)
                     self._json({"ok": True, "proto": PROTO, "app": "KhadamatMisr",
-                                "version": srv.version, "stations": len(srv.stations)})
+                                "version": srv.version, "stations": len(st_map),
+                                "stations_detail": st_map})
                     return
                 if not srv._auth(tok):
                     self._json({"ok": False, "error": "توكن غير صحيح"}, 403)
@@ -707,7 +718,11 @@ class Server:
                     if not user:
                         self._json({"ok": False, "reason": "wrong"})
                         return
-                    srv.log("دخول: %s من %s" % (user.get("username"), req.get("station") or "?"))
+                    stn = (req.get("station") or "").strip()
+                    if stn:
+                        with srv.lock:
+                            srv.stations[stn] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    srv.log("دخول: %s من %s" % (user.get("username"), stn or "?"))
                     self._json({"ok": True, "user": user})
                     return
                 if u.path == "/rpc":
