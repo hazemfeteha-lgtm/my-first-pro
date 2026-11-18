@@ -22,7 +22,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.11.2"
+APP_VERSION = "2.11.3"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
