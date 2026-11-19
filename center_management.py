@@ -22,7 +22,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.11.6"
+APP_VERSION = "2.11.7"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -6645,26 +6645,30 @@ class CenterApp:
         """إضافة عامل بديل سريع وتأكيد حضوره في الحضور والانصراف."""
         if not self.need("attend", "add"):
             return
-        win = self._dialog("إضافة عامل بديل", "560x420")
-        self._minsize(win, 480, 320)
+        win = self._dialog("إضافة عامل بديل", "560x560")
+        self._minsize(win, 500, 460)
         tk.Label(win, text="➕ عامل بديل", bg=BG, fg=INK,
                  font=(FONT, 16, "bold")).pack(anchor="e", padx=22, pady=(14, 2))
         tk.Label(win, text="اختر القسم ثم اكتب الاسم ورقم التليفون — وسيتم تأكيد حضوره الآن على السيستم.",
-                 bg=BG, fg=MUTED, font=(FONT, 10), wraplength=500, justify="right").pack(anchor="e", padx=24, pady=(0, 8))
+                 bg=BG, fg=MUTED, font=(FONT, 10), wraplength=480, justify="right").pack(anchor="e", padx=24, pady=(0, 8))
 
         form = self.panel(win); form.pack(fill="x", padx=16, pady=6)
+        try:
+            form.grid_columnconfigure(0, weight=1)
+        except Exception:
+            pass
         dept_labels = ["أمن", "خدمات", "فنيين"]
         dept_var = tk.StringVar(value="أمن")
         name_var = tk.StringVar()
         phone_var = tk.StringVar()
 
-        self.add_combo(form, "القسم", dept_var, dept_labels, 0, 2)
-        self.add_field(form, "اسم العامل", name_var, 0, 1, 260)
-        self.add_field(form, "رقم التليفون", phone_var, 0, 0, 220)
+        self.add_combo(form, "القسم", dept_var, dept_labels, 0, 0)
+        self.add_field(form, "اسم العامل", name_var, 1, 0, 340)
+        self.add_field(form, "رقم التليفون", phone_var, 2, 0, 340)
 
         hint = tk.Label(form, text="سيظهر العامل في الحضور والانصراف ويمكن تسجيل انصرافه لاحقًا.",
-                        bg=WHITE, fg=BLUE, font=(FONT, 9, "bold"), justify="right")
-        hint.grid(row=1, column=0, columnspan=3, sticky="e", padx=14, pady=(0, 10))
+                        bg=WHITE, fg=BLUE, font=(FONT, 9, "bold"), justify="right", wraplength=460)
+        hint.grid(row=3, column=0, sticky="e", padx=14, pady=(4, 10))
 
         def save():
             name = " ".join(name_var.get().split())
