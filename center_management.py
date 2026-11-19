@@ -22,7 +22,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.11.5"
+APP_VERSION = "2.11.6"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -6457,7 +6457,7 @@ class CenterApp:
         form = self.panel(tab); form.pack(fill="x", pady=4)
         self.c_emp = tk.StringVar(); self.c_date = tk.StringVar(value=today_text())
         self.c_in = tk.StringVar(); self.c_out = tk.StringVar(); self.c_notes = tk.StringVar()
-        self.add_combo(form, "اسم العامل", self.c_emp, names, 0, 2)
+        self.c_emp_cb = self.add_combo(form, "اسم العامل", self.c_emp, names, 0, 2)
         self.add_date(form, "التاريخ", self.c_date, 0, 1)
         info = tk.Label(form, text="", bg=WHITE, fg=BLUE, font=(FONT, 10, "bold"), justify="right", wraplength=320)
         info.grid(row=0, column=0, padx=14, sticky="e")
@@ -6474,6 +6474,7 @@ class CenterApp:
                  bg=WHITE, fg=MUTED, font=(FONT, 9)).pack(side="right", padx=6)
         self.btn(quick, "✅ حضور الآن", lambda: self.clock_now("in"), GREEN).pack(side="right", padx=4)
         self.btn(quick, "🚪 انصراف الآن", lambda: self.clock_now("out"), ORANGE).pack(side="right", padx=4)
+        self.btn(quick, "➕ عامل بديل", self.add_substitute_worker, PURPLE).pack(side="right", padx=(12, 4))
 
         bx = tk.Frame(form, bg=WHITE); bx.grid(row=3, column=0, columnspan=3, sticky="e", padx=14, pady=(4, 10))
         self.btn(bx, "💾 حفظ الحضور والانصراف", self.save_clock, GREEN).pack(side="right", padx=4)
@@ -6639,6 +6640,96 @@ class CenterApp:
         with db() as con:
             con.execute("DELETE FROM attendance WHERE id=?", (int(sel[0]),))
         self.load_clock()
+
+    def add_substitute_worker(self):
+        """إضافة عامل بديل سريع وتأكيد حضوره في الحضور والانصراف."""
+        if not self.need("attend", "add"):
+            return
+        win = self._dialog("إضافة عامل بديل", "560x420")
+        self._minsize(win, 480, 320)
+        tk.Label(win, text="➕ عامل بديل", bg=BG, fg=INK,
+                 font=(FONT, 16, "bold")).pack(anchor="e", padx=22, pady=(14, 2))
+        tk.Label(win, text="اختر القسم ثم اكتب الاسم ورقم التليفون — وسيتم تأكيد حضوره الآن على السيستم.",
+                 bg=BG, fg=MUTED, font=(FONT, 10), wraplength=500, justify="right").pack(anchor="e", padx=24, pady=(0, 8))
+
+        form = self.panel(win); form.pack(fill="x", padx=16, pady=6)
+        dept_labels = ["أمن", "خدمات", "فنيين"]
+        dept_var = tk.StringVar(value="أمن")
+        name_var = tk.StringVar()
+        phone_var = tk.StringVar()
+
+        self.add_combo(form, "القسم", dept_var, dept_labels, 0, 2)
+        self.add_field(form, "اسم العامل", name_var, 0, 1, 260)
+        self.add_field(form, "رقم التليفون", phone_var, 0, 0, 220)
+
+        hint = tk.Label(form, text="سيظهر العامل في الحضور والانصراف ويمكن تسجيل انصرافه لاحقًا.",
+                        bg=WHITE, fg=BLUE, font=(FONT, 9, "bold"), justify="right")
+        hint.grid(row=1, column=0, columnspan=3, sticky="e", padx=14, pady=(0, 10))
+
+        def save():
+            name = " ".join(name_var.get().split())
+            phone = phone_var.get().strip().translate(_AR_DIGITS)
+            dept_disp = dept_var.get().strip() or "أمن"
+            dept_db = "صيانة" if dept_disp == "فنيين" else dept_disp
+            if dept_db not in DEPARTMENTS:
+                dept_db = "أمن"
+            if not name:
+                messagebox.showwarning("بيانات ناقصة", "اكتب اسم العامل البديل.", parent=win); return
+            try:
+                with db() as con:
+                    row = con.execute("SELECT id, status FROM employees WHERE name=?", (name,)).fetchone()
+                    if row is None:
+                        con.execute("""INSERT INTO employees(name,department,job_title,phone,start_date,status,created_at)
+                                       VALUES(?,?,?,?,?,?,?)""",
+                                    (name, dept_db, "عامل بديل", phone, date.today().isoformat(), STATUS_ON, now_stamp()))
+                    else:
+                        emp_id, st = row
+                        if st == STATUS_OFF:
+                            if not messagebox.askyesno("عامل مسجل سابقًا",
+                                                       f"«{name}» مسجل بحالة «ترك العمل».\nهل تريد إعادته على رأس العمل وتأكيد حضوره كبديل؟",
+                                                       parent=win):
+                                return
+                        # حدّث بيانات أساسية مفيدة للبديل مع الحفاظ على السجل
+                        con.execute("""UPDATE employees
+                                       SET department=?, phone=CASE WHEN ?<>'' THEN ? ELSE phone END,
+                                           status=?, job_title=CASE WHEN (job_title IS NULL OR job_title='') THEN ? ELSE job_title END,
+                                           end_date=''
+                                       WHERE id=?""",
+                                    (dept_db, phone, phone, STATUS_ON, "عامل بديل", emp_id))
+            except Exception as ex:
+                messagebox.showerror("خطأ", f"تعذر حفظ العامل البديل:\n{ex}", parent=win); return
+
+            # حدّث القوائم واختر العامل
+            try:
+                if hasattr(self, "c_emp_cb") and self.c_emp_cb.winfo_exists():
+                    self.c_emp_cb["values"] = self.worker_names()
+            except Exception:
+                pass
+            try:
+                self.c_emp.set(name)
+                self.c_date.set(today_text())
+            except Exception:
+                pass
+            try:
+                if hasattr(self, "w_tree") and self.w_tree.winfo_exists():
+                    self.load_workers()
+            except Exception:
+                pass
+            win.destroy()
+            # تأكيد الحضور الآن على السيستم
+            try:
+                self.clock_now("in")
+            except Exception as ex:
+                messagebox.showinfo("تم", f"تم حفظ العامل البديل «{name}».\nيمكنك تسجيل حضوره الآن.\n\n{ex}", parent=self.root)
+
+        bx = tk.Frame(win, bg=BG); bx.pack(pady=10)
+        self.btn(bx, "✅ حفظ وتأكيد الحضور", save, GREEN).pack(side="right", padx=6)
+        self.btn(bx, "إلغاء", win.destroy, MUTED).pack(side="right", padx=6)
+        try:
+            win.bind("<Return>", lambda e: save())
+        except Exception:
+            pass
+
 
     def build_permits_tab(self, tab):
         names = self.worker_names()
