@@ -22,7 +22,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.12.0"
+APP_VERSION = "2.12.1"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -6615,12 +6615,25 @@ class CenterApp:
                 messagebox.showwarning("بيانات ناقصة", "اكتب اسم الموظف الجديد.", parent=win); return
             with db() as con:
                 ex = con.execute("SELECT status FROM gov_staff WHERE entity=? AND name=?", (ent, name)).fetchone()
+            if ex is None:
+                if not self.can("govstaff", "add"):
+                    messagebox.showwarning("غير مسموح", "لإضافة موظف جهة جديد يلزم صلاحية «إضافة» على قاعدة بيانات موظفي الجهات.", parent=win); return
+            elif ex[0] == STATUS_OFF:
+                if not self.can("govstaff", "edit"):
+                    messagebox.showwarning("غير مسموح", "لإعادة تفعيل موظف جهة سابق يلزم صلاحية «تعديل» على قاعدة بيانات موظفي الجهات.", parent=win); return
+                if not messagebox.askyesno("موظف سابق", f"«{name}» مسجل بحالة «ترك العمل». هل تريد إعادته على رأس العمل؟", parent=win):
+                    return
+            else:
+                # موجود وعلى رأس العمل - فقط افتح التسجيل
+                nv.set(""); jv.set(""); load()
+                self.gov_action_dialog(ent, name, lambda: (load(), self.gov_reload()))
+                return
+            with db() as con:
+                ex = con.execute("SELECT status FROM gov_staff WHERE entity=? AND name=?", (ent, name)).fetchone()
                 if ex is None:
                     con.execute("INSERT INTO gov_staff(entity,name,job_title,status,created_at) VALUES(?,?,?,?,?)",
                                 (ent, name, jv.get().strip(), STATUS_ON, now_stamp()))
                 elif ex[0] == STATUS_OFF:
-                    if not messagebox.askyesno("موظف سابق", f"«{name}» مسجل بحالة «ترك العمل». هل تريد إعادته على رأس العمل؟", parent=win):
-                        return
                     con.execute("UPDATE gov_staff SET status=? WHERE entity=? AND name=?", (STATUS_ON, ent, name))
             nv.set(""); jv.set(""); load()
             self.gov_action_dialog(ent, name, lambda: (load(), self.gov_reload()))
@@ -6703,7 +6716,8 @@ class CenterApp:
                     con.execute("INSERT INTO gov_attendance(entity,person,att_date,in_time,out_time,notes,created_at) VALUES(?,?,?,?,?,?,?)",
                                 (ent, name, iso, t if kind == "in" else "", t if kind == "out" else "", note, now_stamp()))
                 if not con.execute("SELECT 1 FROM gov_staff WHERE entity=? AND name=?", (ent, name)).fetchone():
-                    con.execute("INSERT INTO gov_staff(entity,name,status,created_at) VALUES(?,?,?,?)", (ent, name, STATUS_ON, now_stamp()))
+                    if self.can("govstaff", "add"):
+                        con.execute("INSERT INTO gov_staff(entity,name,status,created_at) VALUES(?,?,?,?)", (ent, name, STATUS_ON, now_stamp()))
             win.destroy()
             if refresh: refresh()
             what = {"in": f"دخول الساعة {fmt_time(t)}", "out": f"خروج الساعة {fmt_time(t)}", "note": "الملاحظة"}[kind]
@@ -7052,11 +7066,11 @@ class CenterApp:
         missing = []
         if not self.can("attend", "add"):
             missing.append("الحضور والانصراف (إضافة)")
-        if not self.can("workers", "add"):
-            missing.append("قاعدة بيانات العاملين (إضافة على الأقل)")
+        if not self.can("workers", "add") and not self.can("workers", "edit"):
+            missing.append("قاعدة بيانات العاملين (إضافة لعامل جديد / تعديل لعامل موجود)")
         if missing:
             msg = "لاستخدام «عامل بديل» يلزم توفر الصلاحيات التالية:\n• " + "\n• ".join(missing)
-            msg += "\n\nملاحظة: إذا كان العامل البديل مسجّلًا سابقًا (ترك العمل) قد يلزم «تعديل» على قاعدة بيانات العاملين."
+            msg += "\n\nملاحظة: عامل جديد يحتاج «إضافة»، والعامل المسجّل سابقًا يحتاج «تعديل» على قاعدة بيانات العاملين."
             messagebox.showwarning("غير مسموح", msg, parent=self.root)
             return
         win = self._dialog("إضافة عامل بديل", "560x560")
@@ -7096,17 +7110,26 @@ class CenterApp:
             try:
                 with db() as con:
                     row = con.execute("SELECT id, status FROM employees WHERE name=?", (name,)).fetchone()
+                if row is None:
+                    if not self.can("workers", "add"):
+                        messagebox.showwarning("غير مسموح", "إضافة عامل بديل جديد تحتاج صلاحية «إضافة» على قاعدة بيانات العاملين.", parent=win); return
+                else:
+                    if not self.can("workers", "edit"):
+                        messagebox.showwarning("غير مسموح", "تحديث بيانات عامل مسجّل سابقًا يحتاج صلاحية «تعديل» على قاعدة بيانات العاملين.", parent=win); return
+                    emp_id, st = row
+                    if st == STATUS_OFF:
+                        if not messagebox.askyesno("عامل مسجل سابقًا",
+                                                   f"«{name}» مسجل بحالة «ترك العمل».\nهل تريد إعادته على رأس العمل وتأكيد حضوره كبديل؟",
+                                                   parent=win):
+                            return
+                with db() as con:
+                    row = con.execute("SELECT id, status FROM employees WHERE name=?", (name,)).fetchone()
                     if row is None:
                         con.execute("""INSERT INTO employees(name,department,job_title,phone,start_date,status,created_at)
                                        VALUES(?,?,?,?,?,?,?)""",
                                     (name, dept_db, "عامل بديل", phone, date.today().isoformat(), STATUS_ON, now_stamp()))
                     else:
                         emp_id, st = row
-                        if st == STATUS_OFF:
-                            if not messagebox.askyesno("عامل مسجل سابقًا",
-                                                       f"«{name}» مسجل بحالة «ترك العمل».\nهل تريد إعادته على رأس العمل وتأكيد حضوره كبديل؟",
-                                                       parent=win):
-                                return
                         # حدّث بيانات أساسية مفيدة للبديل مع الحفاظ على السجل
                         con.execute("""UPDATE employees
                                        SET department=?, phone=CASE WHEN ?<>'' THEN ? ELSE phone END,
