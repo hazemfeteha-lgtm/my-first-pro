@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """طبقة الشبكة لبرنامج «خدمات مصر» (تشغيل على أكثر من جهاز في شبكة LAN).
 
 الأوضاع:
@@ -163,7 +163,10 @@ def allowed(user, sql, params):
         m = _FROM_RE.search(sql or "")
         tbl = m.group(1).lower() if m else None
         if tbl is None:
-            return True, ""            # مثل SELECT 1 (بدون جدول)
+            # PRAGMA/EXPLAIN تكشف مخطط القاعدة — للمدير فقط
+            if re.match(r"^\s*(PRAGMA|EXPLAIN)\b", sql or "", re.I):
+                return False, "هذا الاستعلام للمدير فقط"
+            return True, ""            # مثل SELECT 1 / VALUES بدون جدول
     else:
         return False, "استعلام غير مسموح"
     page = _TABLE_PAGE.get(tbl)

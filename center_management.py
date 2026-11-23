@@ -22,7 +22,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.11.7"
+APP_VERSION = "2.11.8"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -2557,6 +2557,7 @@ class CenterApp:
         um.add_command(label="🎨  المظهر والثيمات", command=self.appearance_dialog)
         um.add_command(label="⛶  ملء الشاشة", command=self.toggle_fullscreen)
         um.add_command(label="⌨️  اختصارات لوحة المفاتيح", command=self.shortcuts_dialog)
+        um.add_command(label="ℹ️  عن البرنامج", command=self.about_dialog)
         if self.user["is_admin"]:
             um.add_command(label="👥  المستخدمون والصلاحيات", command=self.users_dialog)
             um.add_command(label="🌐  الشبكة (LAN)", command=self.net_dialog)
@@ -2564,6 +2565,7 @@ class CenterApp:
             um.add_command(label="🗂️  النسخ الاحتياطية", command=self.backups_dialog)
         um.add_separator()
         um.add_command(label="🚪  تسجيل الخروج", command=self.logout)
+        um.add_command(label="⛔  خروج من البرنامج", command=self.exit_app)
         umb_win = hdr.create_window(0, 0, anchor="e" if en else "w", window=self.user_btn)
 
         def layout(_=None):
@@ -2626,6 +2628,9 @@ class CenterApp:
         tk.Label(self.sidebar, text="القائمة الرئيسية", bg=NAVY_2, fg=SIDE_MUTED,
                  font=(FONT, 11, "bold")).pack(pady=(16, 8))
         # الأزرار السفلية تُحجز قبل منطقة التمرير عشان تفضل مثبّتة في آخر القائمة
+        tk.Button(self.sidebar, text="خروج من البرنامج   ⛔", command=self.exit_app, anchor="e",
+                  bg=NAVY_2, fg="#fca5a5", activebackground=RED, activeforeground="white", relief="flat", bd=0,
+                  font=(FONT, 10, "bold"), padx=18, pady=8, cursor="hand2").pack(side="bottom", fill="x", padx=10, pady=(0, 6))
         tk.Button(self.sidebar, text="المظهر والثيمات   🎨", command=self.appearance_dialog, anchor="e",
                   bg=NAVY_2, fg=SIDE_ACCENT, activebackground=BLUE, activeforeground="white", relief="flat", bd=0,
                   font=(FONT, 10, "bold"), padx=18, pady=8, cursor="hand2").pack(side="bottom", fill="x", padx=10, pady=(0, 6))
@@ -3232,6 +3237,34 @@ class CenterApp:
         self.root.deiconify(); self.root.configure(bg=BG)
         self.setup_style(); self.build_shell(); self.go("home")
 
+    def exit_app(self):
+        if not messagebox.askyesno("خروج من البرنامج", "هل تريد إغلاق البرنامج؟", parent=self.root):
+            return
+        try:
+            self.root.destroy()
+        except Exception:
+            pass
+
+    def about_dialog(self):
+        win = self._dialog("عن البرنامج", "560x420")
+        self._minsize(win, 480, 360)
+        box = self.panel(win); box.pack(fill="both", expand=True, padx=18, pady=16)
+        tk.Label(box, text=f"🏛️ {APP_NAME}", bg=WHITE, fg=INK, font=(FONT, 20, "bold")).pack(anchor="e", padx=18, pady=(18, 2))
+        tk.Label(box, text=f"نظام إدارة ومتابعة المركز — فرع {BRANCH}", bg=WHITE, fg=MUTED, font=(FONT, 11, "bold")).pack(anchor="e", padx=18, pady=(0, 12))
+        info = tk.Frame(box, bg=WHITE); info.pack(fill="x", padx=18, pady=6)
+        rows = [
+            ("الإصدار", f"v{APP_VERSION}"),
+            ("تصميم وتطوير", "مهندس حازم فتيحه"),
+            ("تليفون", "01093613635"),
+            ("البريد الإلكتروني", "hazemfeteha@gmail.com"),
+        ]
+        for k, v in rows:
+            r = tk.Frame(info, bg=WHITE); r.pack(fill="x", pady=4)
+            tk.Label(r, text=v, bg=WHITE, fg=TEXT, font=(FONT, 11, "bold"), anchor="e", justify="right").pack(side="right")
+            tk.Label(r, text=f"{k}:", bg=WHITE, fg=MUTED, font=(FONT, 10, "bold"), anchor="e", width=16).pack(side="right", padx=(0, 8))
+        tk.Label(box, text="© جميع الحقوق محفوظة", bg=WHITE, fg=MUTED, font=(FONT, 9)).pack(anchor="e", padx=18, pady=(14, 4))
+        self.btn(box, "إغلاق", win.destroy, PRIMARY).pack(pady=(6, 14))
+
     def change_password_dialog(self):
         win = self._dialog("تغيير كلمة المرور", "440x360")
         tk.Label(win, text="🔑 تغيير كلمة المرور", bg=BG, fg=INK, font=(FONT, 15, "bold")).pack(anchor="e", padx=20, pady=(14, 6))
@@ -3246,8 +3279,6 @@ class CenterApp:
                 r = con.execute("SELECT pw_hash,salt FROM users WHERE id=?", (self.user["id"],)).fetchone()
             if not r or not hmac.compare_digest(hash_pw(old, r[1]), r[0]):
                 messagebox.showerror("كلمة المرور", "كلمة المرور الحالية غير صحيحة.", parent=win); return
-            if len(new) < 4:
-                messagebox.showwarning("كلمة المرور", "كلمة المرور الجديدة لا تقل عن 4 خانات.", parent=win); return
             err = validate_password(new, conf)
             if err:
                 messagebox.showwarning("كلمة المرور", err, parent=win); return
@@ -3420,8 +3451,12 @@ class CenterApp:
             name, pw = name_var.get().strip(), pw_var.get()
             if not name:
                 messagebox.showwarning("بيانات ناقصة", "اكتب اسم المستخدم.", parent=win); return
-            if (not uid and len(pw) < 4) or (pw and len(pw) < 4):
-                messagebox.showwarning("كلمة المرور", "كلمة المرور لا تقل عن 4 خانات.", parent=win); return
+            if not uid and not pw:
+                messagebox.showwarning("كلمة المرور", "اكتب كلمة مرور للمستخدم الجديد.", parent=win); return
+            if pw:
+                err = validate_password(pw, pw)
+                if err:
+                    messagebox.showwarning("كلمة المرور", err, parent=win); return
             is_ad, act = adm_var.get(), act_var.get()
             perms = {k: v.get() for k, v in pvars.items() if v.get() != "none"}
             with db() as con:
@@ -4549,7 +4584,7 @@ class CenterApp:
         self.page_title("سجل الصيانة", "سجل أعمال الصيانة مع الجهة أو الفني والملاحظات، والتاريخ والوقت تلقائيًا")
         form = self.panel(); form.pack(fill="x", padx=24, pady=6)
         self.maint_person = tk.StringVar(); self.maint_entity = tk.StringVar(); self.maint_notes = tk.StringVar()
-        self.add_field(form, "اسم الفني / المسؤول", self.maint_person, 0, 0, 250)
+        self.add_combo(form, "اسم الفني / المسؤول (اختر أو اكتب)", self.maint_person, self.worker_names(), 0, 0, readonly=False)
         self.add_field(form, "الجهة / الشركة", self.maint_entity, 0, 1, 250)
         self.add_field(form, "ملاحظات الصيانة", self.maint_notes, 1, 0, 560)
         bx = tk.Frame(form, bg=WHITE); bx.grid(row=1, column=1, padx=14, pady=10, sticky="e")
@@ -6643,7 +6678,15 @@ class CenterApp:
 
     def add_substitute_worker(self):
         """إضافة عامل بديل سريع وتأكيد حضوره في الحضور والانصراف."""
-        if not self.need("attend", "add"):
+        missing = []
+        if not self.can("attend", "add"):
+            missing.append("الحضور والانصراف (إضافة)")
+        if not self.can("workers", "add"):
+            missing.append("قاعدة بيانات العاملين (إضافة على الأقل)")
+        if missing:
+            msg = "لاستخدام «عامل بديل» يلزم توفر الصلاحيات التالية:\n• " + "\n• ".join(missing)
+            msg += "\n\nملاحظة: إذا كان العامل البديل مسجّلًا سابقًا (ترك العمل) قد يلزم «تعديل» على قاعدة بيانات العاملين."
+            messagebox.showwarning("غير مسموح", msg, parent=self.root)
             return
         win = self._dialog("إضافة عامل بديل", "560x560")
         self._minsize(win, 500, 460)
