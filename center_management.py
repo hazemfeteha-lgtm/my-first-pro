@@ -22,7 +22,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.12.1"
+APP_VERSION = "2.12.2"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -1562,7 +1562,7 @@ def _style_sheet(sh, title, period, headers, widths):
     sh.oddFooter.center.text = f"{APP_NAME} - تصميم: {DESIGNER}"
 
 
-def _write_rows(sh, rows, ncol):
+def _write_rows(sh, rows, ncol, footer=None):
     # الأنماط تُنشأ مرة واحدة (أسرع بكثير مع التقارير الكبيرة)
     thin = Border(bottom=Side(style="hair", color="B8C7D6"))
     font = Font(name="Arial", size=10)
@@ -1577,7 +1577,19 @@ def _write_rows(sh, rows, ncol):
             cell.border = thin
             if r % 2 == 0:
                 cell.fill = zebra
-    last = max(sh.max_row, 4)
+    last_data = 4 + len(rows) if rows else 4
+    if footer and rows:
+        fr = last_data + 1
+        foot_font = Font(name="Arial", size=10, bold=True, color="0B1D3A")
+        foot_fill = PatternFill("solid", fgColor="DCEBFF")
+        for c, val in enumerate(footer, 1):
+            cell = sh.cell(fr, c, val)
+            cell.font = foot_font
+            cell.alignment = al_txt if isinstance(val, str) else al_num
+            cell.fill = foot_fill
+            cell.border = thin
+        last_data = fr
+    last = max(sh.max_row, last_data, 4)
     sh.auto_filter.ref = f"A4:{get_column_letter(ncol)}{last}"
     # سطر التوقيع أسفل الجدول
     foot = last + 2
@@ -1609,10 +1621,14 @@ def report_sections(kind, start, end):
         if kind in ("all", "tickets", "maintenance"):
             rows = con.execute("""SELECT t_date, t_time, m_type, status, end_date, person, entity, notes, done_at
                 FROM maintenance_tickets WHERE date(created_at) BETWEEN ? AND ? ORDER BY created_at""", (start, end)).fetchall()
+            open_n = sum(1 for r in rows if r[3] == 'قائمة')
+            done_n = sum(1 for r in rows if r[3] == 'انتهت')
             add("تيكتات الصيانة", "تيكتات الصيانة (فتح / إنهاء)",
                 ["تاريخ الفتح", "الوقت", "نوع الصيانة", "الحالة", "تاريخ الانتهاء", "الفني / المسؤول", "الجهة / المكان", "ملاحظات", "وقت الإنهاء"],
                 [14, 10, 18, 12, 14, 20, 18, 34, 20],
                 [(fmt_iso_date(a) if a and '-' in str(a) else a, b, c, d, fmt_iso_date(e) if e and '-' in str(e) else e, f, g, h, fmt_stamp(i) if i else "-") for a,b,c,d,e,f,g,h,i in rows])
+            if rows:
+                S[-1]["footer"] = ("الإجمالي", "", f"{len(rows)} تيكت", f"قائمة: {open_n}", f"انتهت: {done_n}", "", "", "", "")
             summ = con.execute("""SELECT m_type,
                     SUM(status='قائمة'), SUM(status='انتهت'), COUNT(*)
                 FROM maintenance_tickets WHERE date(created_at) BETWEEN ? AND ?
@@ -1633,11 +1649,15 @@ def report_sections(kind, start, end):
         if kind in ("all", "purchases"):
             rows = con.execute("""SELECT p_date, category, item, qty, unit_price, total, supplier, invoice_no, paid_by, notes, invoice_file
                 FROM purchases WHERE p_date BETWEEN ? AND ? ORDER BY p_date, id""", (start, end)).fetchall()
+            tot = sum(r[5] or 0 for r in rows)
+            footer = ("", "", "إجمالي المشتريات", fmt_num(sum(r[3] or 0 for r in rows)), "", fmt_money(tot), "", "", "", f"{len(rows)} بند", "") if rows else None
             add("المشتريات", "سجل المشتريات",
                 ["التاريخ", "النوع", "الصنف", "الكمية", "سعر الوحدة", "الإجمالي", "المورد", "رقم الفاتورة", "سُدد بواسطة", "ملاحظات", "فاتورة"],
                 [12, 10, 24, 10, 12, 12, 18, 12, 16, 24, 8],
                 [(fmt_iso_date(d), PURCH_CATS.get(c,c), i, fmt_num(q), fmt_money(u), fmt_money(t), s, inv, paid, n, "✓" if f else "-")
                  for d,c,i,q,u,t,s,inv,paid,n,f in rows])
+            if footer:
+                S[-1]["footer"] = footer
             tot = sum(r[5] or 0 for r in rows)
             by_cat = {}
             for r in rows:
@@ -1904,9 +1924,8 @@ def build_sections_excel(path, sections):
     for sec in sections:
         sh = wb.create_sheet(sec["name"][:31])
         _style_sheet(sh, sec["title"], sec["period"], sec["headers"], sec["widths"])
-        _write_rows(sh, sec["rows"], len(sec["headers"]))
-        if sec["rows"]:
-            sh.auto_filter.ref = f"A4:{get_column_letter(len(sec['headers']))}{4 + len(sec['rows'])}"
+        footer = sec.get("footer")
+        _write_rows(sh, sec["rows"], len(sec["headers"]), footer)
         result[sec["name"]] = len(sec["rows"])
     if not wb.sheetnames:
         wb.create_sheet("لا توجد بيانات")
@@ -1918,7 +1937,7 @@ def sections_html(title, sections, subtitle=""):
     total = sum(len(x.get("rows", [])) for x in sections)
     sub = subtitle or (sections[0].get("period", "") if sections else "")
     body = f'<div class="meta"><span class="chip">عدد الأقسام: {len(sections)}</span><span class="chip">إجمالي السجلات: {total}</span></div>'
-    body += "".join(html_table(x["title"], x["headers"], x["rows"], note=(x.get("period","") if x.get("period","") != sub else "")) for x in sections)
+    body += "".join(html_table(x["title"], x["headers"], x["rows"], note=(x.get("period","") if x.get("period","") != sub else ""), footer=x.get("footer")) for x in sections)
     return html_page(title, sub, body)
 
 
@@ -2100,7 +2119,7 @@ def build_report_html(kind, start, end):
         # لا نكرر فترة التقرير داخل كل قسم إلا لو مختلفة
         if note == sub:
             note = ""
-        body += html_table(x["title"], x["headers"], x["rows"], note=note)
+        body += html_table(x["title"], x["headers"], x["rows"], note=note, footer=x.get("footer"))
     title = "التقرير الشامل" if kind == "all" else (S[0]["title"] if S else "تقرير")
     return html_page(title, sub, body)
 
@@ -6177,6 +6196,7 @@ class CenterApp:
         # ---- الإجراءات ----
         bx = tk.Frame(panel, bg=WHITE); bx.pack(fill="x", padx=14, pady=(10, 12))
         self.btn(bx, "معاينة الأعداد", self.preview_counts, BLUE).pack(side="right", padx=6)
+        self.btn(bx, "👁️ معاينة تفصيلية", self.preview_report_data, TEAL).pack(side="right", padx=6)
         self.btn(bx, "استخراج التقرير إلى Excel", self.export_report, GREEN).pack(side="right", padx=6)
         self.btn(bx, "🖨️ طباعة التقرير", self.print_report, PURPLE).pack(side="right", padx=6)
 
@@ -7455,6 +7475,84 @@ class CenterApp:
             messagebox.showerror("التاريخ", "راجع تاريخ البداية والنهاية (يوم/شهر/سنة).")
             return None
 
+
+    def preview_report_data(self):
+        """معاينة تفصيلية للتقرير داخل البرنامج قبل الاستخراج/الطباعة."""
+        p = self.read_period()
+        if not p:
+            return
+        try:
+            sections = report_sections(self.report_type.get(), *p)
+        except Exception as ex:
+            messagebox.showerror("خطأ", f"تعذر تجهيز المعاينة:\n{ex}")
+            return
+        if not sections:
+            messagebox.showinfo("معاينة التقرير", "لا توجد بيانات في الفترة المحددة.")
+            return
+
+        win = self._dialog("معاينة تفصيلية للتقرير", "1180x720")
+        self._minsize(win, 980, 560)
+        head = tk.Frame(win, bg=BG)
+        head.pack(fill="x", padx=16, pady=(10, 4))
+        kind = self.report_type.get()
+        title = "التقرير الشامل" if kind == "all" else (sections[0]["title"] if sections else "تقرير")
+        tk.Label(head, text=f"👁️ {title}", bg=BG, fg=INK, font=(FONT, 15, "bold")).pack(anchor="e")
+        total = sum(len(x["rows"]) for x in sections if x["name"] not in SUMMARY_ONLY)
+        sub = sections[0].get("period", "") if sections else ""
+        tk.Label(head, text=f"{sub}   |   الأقسام: {len(sections)}   |   إجمالي السجلات: {total}", bg=BG, fg=MUTED, font=(FONT, 10)).pack(anchor="e", pady=(2, 0))
+
+        nb = ttk.Notebook(win)
+        nb.pack(fill="both", expand=True, padx=12, pady=8)
+
+        for sec in sections:
+            tab = tk.Frame(nb, bg=BG)
+            nb.add(tab, text=f"{sec['name']} ({len(sec['rows'])})")
+            info = tk.Frame(tab, bg=BG)
+            info.pack(fill="x", padx=8, pady=(6, 2))
+            tk.Label(info, text=sec.get("title", sec["name"]), bg=BG, fg=INK, font=(FONT, 11, "bold")).pack(side="right")
+            tk.Label(info, text=f"{len(sec['rows'])} سجل", bg=BG, fg=BLUE, font=(FONT, 10, "bold")).pack(side="right", padx=12)
+
+            cols = [f"c{i}" for i in range(len(sec["headers"]))]
+            tree_frame = tk.Frame(tab, bg=BG)
+            tree_frame.pack(fill="both", expand=True, padx=8, pady=4)
+            vsb = ttk.Scrollbar(tree_frame, orient="vertical")
+            hsb = ttk.Scrollbar(tree_frame, orient="horizontal")
+            tree = ttk.Treeview(tree_frame, columns=cols, show="headings", yscrollcommand=vsb.set, xscrollcommand=hsb.set, height=16)
+            vsb.config(command=tree.yview); hsb.config(command=tree.xview)
+            tree.grid(row=0, column=0, sticky="nsew")
+            vsb.grid(row=0, column=1, sticky="ns")
+            hsb.grid(row=1, column=0, sticky="ew")
+            tree_frame.grid_rowconfigure(0, weight=1)
+            tree_frame.grid_columnconfigure(0, weight=1)
+
+            for i, h in enumerate(sec["headers"]):
+                w = 140
+                try:
+                    w = max(90, min(320, int(sec.get("widths", [14]*len(sec["headers"]))[i]) * 9))
+                except Exception:
+                    pass
+                tree.heading(cols[i], text=h)
+                tree.column(cols[i], width=w, anchor="center", stretch=True)
+
+            max_rows = 500
+            for r in sec["rows"][:max_rows]:
+                vals = [("" if v is None else str(v)) for v in r]
+                # pad/trim to header count
+                if len(vals) < len(cols):
+                    vals += [""] * (len(cols) - len(vals))
+                tree.insert("", "end", values=vals[:len(cols)])
+            if len(sec["rows"]) > max_rows:
+                tk.Label(tab, text=f"تم عرض أول {max_rows} سجل فقط في المعاينة — الاستخراج/الطباعة يشمل كل البيانات.", bg=BG, fg=AMBER, font=(FONT, 9, "bold")).pack(anchor="e", padx=10, pady=(0, 4))
+            footer = sec.get("footer")
+            if footer:
+                foot_txt = " | ".join(str(x) for x in footer if str(x).strip() and str(x).strip() != "-")
+                tk.Label(tab, text=foot_txt, bg=BG, fg=GREEN, font=(FONT, 10, "bold"), wraplength=1050, justify="right").pack(anchor="e", padx=10, pady=(0, 6))
+
+        bb = tk.Frame(win, bg=BG)
+        bb.pack(fill="x", padx=12, pady=(0, 10))
+        self.btn(bb, "إغلاق", win.destroy, MUTED).pack(side="left", padx=6)
+        self.btn(bb, "🖨️ طباعة", lambda: [win.destroy(), self.print_report()], PURPLE).pack(side="right", padx=6)
+        self.btn(bb, "📊 Excel", lambda: [win.destroy(), self.export_report()], GREEN).pack(side="right", padx=6)
     def preview_counts(self):
         p = self.read_period()
         if not p: return
