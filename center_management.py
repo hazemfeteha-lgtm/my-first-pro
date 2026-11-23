@@ -22,7 +22,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.11.9"
+APP_VERSION = "2.12.0"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -396,7 +396,7 @@ DEPT_START = {"خدمات": "07:00", "أمن": "07:00", "صيانة": "07:30"}  
 DEPT_SHIFT = {"أمن": ("07:00", "19:00"), "صيانة": ("07:30", "16:00"), "خدمات": ("07:00", "16:00")}
 DEPT_LABEL = {"أمن": "الأمن", "صيانة": "الفنيين", "خدمات": "الخدمات"}
 ABSENCE_KINDS = ["غياب بدون إذن", "غياب بعذر", "إجازة مرضية", "إجازة اعتيادية", "تأخير"]
-SUMMARY_ONLY = ("ملخص العاملين", "ملخص الحضور والغياب", "ملخص حضور الموظفين", "ملخص الجهات")
+SUMMARY_ONLY = ("ملخص العاملين", "ملخص الحضور والغياب", "ملخص حضور الموظفين", "ملخص الجهات", "ملخص تيكتات الصيانة", "ملخص المشتريات")
 NOTE_KINDS = ["ملاحظة", "خطأ", "تنبيه شفهي", "إشادة"]
 SEVERITIES = ["بسيطة", "متوسطة", "جسيمة"]
 INV_NAMES = {"cleaning": "جرد النظافة", "paper": "الجرد الورقي", "toner": "جرد الأحبار"}
@@ -1524,6 +1524,8 @@ def period_counts(start, end):
             res[name] = one("SELECT COUNT(*) FROM inventory WHERE category=? AND week_to>=? AND week_from<=?",
                             cat, start, end)
         res["الوارد للمخازن"] = one("SELECT COUNT(*) FROM stock_in WHERE in_date BETWEEN ? AND ?", start, end)
+        res["المشتريات"] = one("SELECT COUNT(*) FROM purchases WHERE p_date BETWEEN ? AND ?", start, end)
+        res["تيكتات الصيانة"] = one("SELECT COUNT(*) FROM maintenance_tickets WHERE date(created_at) BETWEEN ? AND ?", start, end)
         res["إذونات الخروج"] = one("SELECT COUNT(*) FROM permits WHERE permit_date BETWEEN ? AND ?", start, end)
         res["الحضور والانصراف"] = one("SELECT COUNT(*) FROM attendance WHERE att_date BETWEEN ? AND ?", start, end)
         res["الغياب والتأخير"] = one("SELECT COUNT(*) FROM absences WHERE absence_date BETWEEN ? AND ?", start, end)
@@ -1604,6 +1606,19 @@ def report_sections(kind, start, end):
                 WHERE date(created_at) BETWEEN ? AND ? ORDER BY created_at""", (start, end)).fetchall()
             add("الصيانة", "سجل أعمال الصيانة", ["الفني / المسؤول", "الجهة / الشركة", "ملاحظات الصيانة", "تاريخ ووقت التسجيل"],
                 [28, 28, 40, 24], [(a, b, c, fmt_stamp(t)) for a, b, c, t in rows])
+        if kind in ("all", "tickets", "maintenance"):
+            rows = con.execute("""SELECT t_date, t_time, m_type, status, end_date, person, entity, notes, done_at
+                FROM maintenance_tickets WHERE date(created_at) BETWEEN ? AND ? ORDER BY created_at""", (start, end)).fetchall()
+            add("تيكتات الصيانة", "تيكتات الصيانة (فتح / إنهاء)",
+                ["تاريخ الفتح", "الوقت", "نوع الصيانة", "الحالة", "تاريخ الانتهاء", "الفني / المسؤول", "الجهة / المكان", "ملاحظات", "وقت الإنهاء"],
+                [14, 10, 18, 12, 14, 20, 18, 34, 20],
+                [(fmt_iso_date(a) if a and '-' in str(a) else a, b, c, d, fmt_iso_date(e) if e and '-' in str(e) else e, f, g, h, fmt_stamp(i) if i else "-") for a,b,c,d,e,f,g,h,i in rows])
+            summ = con.execute("""SELECT m_type,
+                    SUM(status='قائمة'), SUM(status='انتهت'), COUNT(*)
+                FROM maintenance_tickets WHERE date(created_at) BETWEEN ? AND ?
+                GROUP BY m_type ORDER BY COUNT(*) DESC""", (start, end)).fetchall()
+            add("ملخص تيكتات الصيانة", "ملخص تيكتات الصيانة حسب النوع",
+                ["نوع الصيانة", "قائمة", "انتهت", "الإجمالي"], [28, 14, 14, 14], summ)
         for cat, name in INV_NAMES.items():
             if kind in ("all", cat):
                 add(name, name,
@@ -1615,6 +1630,21 @@ def report_sections(kind, start, end):
             add("الوارد للمخازن", "حركة الوارد (الأصناف المستلمة)",
                 ["تاريخ الاستلام", "القسم", "الصنف", "الكمية", "ملاحظات (المورد / رقم الاستلام)"], [16, 18, 32, 12, 40],
                 [(fmt_iso_date(d), INV_NAMES.get(c, c), i, q, n) for d, c, i, q, n in rows])
+        if kind in ("all", "purchases"):
+            rows = con.execute("""SELECT p_date, category, item, qty, unit_price, total, supplier, invoice_no, paid_by, notes, invoice_file
+                FROM purchases WHERE p_date BETWEEN ? AND ? ORDER BY p_date, id""", (start, end)).fetchall()
+            add("المشتريات", "سجل المشتريات",
+                ["التاريخ", "النوع", "الصنف", "الكمية", "سعر الوحدة", "الإجمالي", "المورد", "رقم الفاتورة", "سُدد بواسطة", "ملاحظات", "فاتورة"],
+                [12, 10, 24, 10, 12, 12, 18, 12, 16, 24, 8],
+                [(fmt_iso_date(d), PURCH_CATS.get(c,c), i, fmt_num(q), fmt_money(u), fmt_money(t), s, inv, paid, n, "✓" if f else "-")
+                 for d,c,i,q,u,t,s,inv,paid,n,f in rows])
+            tot = sum(r[5] or 0 for r in rows)
+            by_cat = {}
+            for r in rows:
+                k = PURCH_CATS.get(r[1], r[1]); by_cat[k] = by_cat.get(k, 0) + (r[5] or 0)
+            summ_rows = [(k, fmt_money(v)) for k, v in by_cat.items()] + ([("الإجمالي الكلي", fmt_money(tot))] if rows else [])
+            add("ملخص المشتريات", "ملخص المشتريات حسب النوع",
+                ["النوع", "إجمالي المبلغ"], [28, 18], summ_rows)
         if kind in ("all", "employees"):
             rows = con.execute("""SELECT n.employee, COALESCE(e.department,'غير مسجل'), n.kind, n.severity,
                     n.details, n.action, n.created_at
@@ -1793,23 +1823,27 @@ def build_report(path, kind, start, end):
 
 
 # ============================ الطباعة (HTML جاهز للطباعة) ============================
-_HTML = """<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>%%TITLE%%</title><style>
+_HTML = """<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>%%TITLE%%</title><style>
 @page{size:A4;margin:12mm 10mm 14mm}
-*{box-sizing:border-box}body{font-family:Tahoma,"Segoe UI",Arial,sans-serif;color:#14233b;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.head{display:flex;align-items:center;gap:14px;background:linear-gradient(90deg,#0b1d3a,#0f6a86);color:#fff;padding:10px 16px;border-radius:10px;border-bottom:5px solid #f5b82e}
-.head img{height:60px;background:#fff;border:3px solid #f5b82e;border-radius:6px}.head h1{margin:0;font-size:21px}.head p{margin:3px 0 0;font-size:12px;color:#cfe3ff}
-h2{font-size:15px;color:#0b1d3a;border-right:5px solid #2a7fff;padding-right:8px;margin:18px 0 7px}h2 small{color:#6a7d99;font-weight:normal}
-table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px}th{background:#13315c;color:#fff;padding:7px 6px}
-td{padding:6px;border-bottom:1px solid #e1e8f3;text-align:center}tbody tr:nth-child(even) td{background:#f5f8fe}thead{display:table-header-group}tr{page-break-inside:avoid}
-.empty{color:#6a7d99;text-align:center;padding:10px;font-size:12px;border:1px dashed #c8d6ea;border-radius:8px}
+*{box-sizing:border-box}body{font-family:Tahoma,"Segoe UI",Arial,sans-serif;color:#14233b;margin:0;line-height:1.5;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.head{display:flex;align-items:center;gap:14px;background:linear-gradient(90deg,#0b1d3a,#0f6a86);color:#fff;padding:12px 16px;border-radius:12px;border-bottom:5px solid #f5b82e;box-shadow:0 2px 10px rgba(11,29,58,.12)}
+.head img{height:62px;background:#fff;border:3px solid #f5b82e;border-radius:8px}.head h1{margin:0;font-size:22px;letter-spacing:.2px}.head p{margin:4px 0 0;font-size:12px;color:#d7e8ff}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 2px}.meta .chip{background:#eef4ff;border:1px solid #d7e3f3;color:#0b1d3a;border-radius:20px;padding:4px 10px;font-size:11px;font-weight:bold}
+h2{font-size:15px;color:#0b1d3a;background:#f4f8ff;border:1px solid #dbe7f5;border-right:6px solid #2a7fff;padding:8px 10px;border-radius:10px;margin:18px 0 8px;page-break-after:avoid}h2 small{color:#5f7390;font-weight:normal}
+table{width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:8px;background:#fff;border:1px solid #dbe5f2;border-radius:8px;overflow:hidden}
+th{background:#13315c;color:#fff;padding:8px 6px;font-weight:bold;border:1px solid #1d4677}
+td{padding:6px 5px;border:1px solid #e1e8f3;text-align:center;vertical-align:top;word-break:break-word}tbody tr:nth-child(even) td{background:#f7faff}thead{display:table-header-group}tr{page-break-inside:avoid}
+tfoot td{background:#eef4ff;color:#0b1d3a;font-weight:bold;border-top:2px solid #9fc0ff}
+.empty{color:#6a7d99;text-align:center;padding:12px;font-size:12px;border:1px dashed #c8d6ea;border-radius:10px;background:#fbfdff}
+.note{color:#5f7390;font-size:11px;margin:0 2px 8px}
 .ins{border-right:5px solid #7c5cff;background:#f3f0ff;padding:8px 12px;border-radius:8px;margin:6px 0;font-size:13px}
 .bars{margin:6px 0 10px}.br{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px}.br .n{width:150px;text-align:right}.br .t{flex:1}
 .bar{height:13px;border-radius:4px;margin:2px 0;min-width:2px;color:#fff;font-size:10px;line-height:13px;padding-right:4px}.a{background:#2a7fff}.b{background:#9aa9c2}
 .up{color:#12b886;font-weight:bold}.dn{color:#e5484d;font-weight:bold}
-.sign{display:flex;justify-content:space-around;margin-top:38px;font-size:12px}.sign div{width:28%;border-top:1px solid #6a7d99;text-align:center;padding-top:6px}
-.foot{text-align:center;color:#6a7d99;font-size:10px;margin-top:16px}.noprint{text-align:center;margin:8px}
+.sign{display:flex;justify-content:space-around;margin-top:38px;font-size:12px;gap:12px}.sign div{width:28%;border-top:1px solid #6a7d99;text-align:center;padding-top:6px}
+.foot{text-align:center;color:#6a7d99;font-size:10px;margin-top:16px;border-top:1px solid #dbe5f2;padding-top:8px}.noprint{text-align:center;margin:8px}
 .noprint button{background:#13315c;color:#fff;border:0;border-radius:8px;padding:9px 22px;font-size:14px;cursor:pointer}
-@media print{.noprint{display:none}}
+@media print{.noprint{display:none} body{font-size:11px}}
 </style></head><body>
 <div class="noprint"><button onclick="window.print()">🖨️ طباعة / حفظ PDF</button></div>
 <div class="head"><img src="data:image/png;base64,%%LOGO%%"><div><h1>%%APP%% - %%TITLE%%</h1><p>%%SUB%%</p></div></div>
@@ -1837,13 +1871,18 @@ def html_page(title, subtitle, body):
             .replace("%%NOW%%", "<bdi>" + datetime.now().strftime("%d/%m/%Y %I:%M %p") + "</bdi>"))
 
 
-def html_table(title, headers, rows, count=True):
+def html_table(title, headers, rows, count=True, note="", footer=None):
     if not rows:
-        return f'<h2>{_e(title)}</h2><div class="empty">لا توجد بيانات في هذه الفترة</div>'
+        note_html = f'<div class="note">{_e(note)}</div>' if note else ""
+        return f'<h2>{_e(title)}</h2>{note_html}<div class="empty">لا توجد بيانات في هذه الفترة</div>'
     th = "".join(f"<th>{_e(h)}</th>" for h in headers)
     tr = "".join("<tr>" + "".join(f"<td><bdi>{_e(c)}</bdi></td>" for c in r) + "</tr>" for r in rows)
-    n = f" <small>({len(rows)})</small>" if count else ""
-    return f"<h2>{_e(title)}{n}</h2><table><thead><tr>{th}</tr></thead><tbody>{tr}</tbody></table>"
+    n = f" <small>({len(rows)} سجل)</small>" if count else ""
+    note_html = f'<div class="note">{_e(note)}</div>' if note else ""
+    foot = ""
+    if footer:
+        foot = "<tfoot><tr>" + "".join(f"<td><bdi>{_e(c)}</bdi></td>" for c in footer) + "</tr></tfoot>"
+    return f"<h2>{_e(title)}{n}</h2>{note_html}<table><thead><tr>{th}</tr></thead><tbody>{tr}</tbody>{foot}</table>"
 
 
 def open_html(html_text, prefix):
@@ -1866,6 +1905,8 @@ def build_sections_excel(path, sections):
         sh = wb.create_sheet(sec["name"][:31])
         _style_sheet(sh, sec["title"], sec["period"], sec["headers"], sec["widths"])
         _write_rows(sh, sec["rows"], len(sec["headers"]))
+        if sec["rows"]:
+            sh.auto_filter.ref = f"A4:{get_column_letter(len(sec['headers']))}{4 + len(sec['rows'])}"
         result[sec["name"]] = len(sec["rows"])
     if not wb.sheetnames:
         wb.create_sheet("لا توجد بيانات")
@@ -1874,8 +1915,11 @@ def build_sections_excel(path, sections):
 
 
 def sections_html(title, sections, subtitle=""):
-    body = "".join(html_table(x["title"], x["headers"], x["rows"]) for x in sections)
-    return html_page(title, subtitle or (sections[0]["period"] if sections else ""), body)
+    total = sum(len(x.get("rows", [])) for x in sections)
+    sub = subtitle or (sections[0].get("period", "") if sections else "")
+    body = f'<div class="meta"><span class="chip">عدد الأقسام: {len(sections)}</span><span class="chip">إجمالي السجلات: {total}</span></div>'
+    body += "".join(html_table(x["title"], x["headers"], x["rows"], note=(x.get("period","") if x.get("period","") != sub else "")) for x in sections)
+    return html_page(title, sub, body)
 
 
 def filter_sections_by_employee(sections, name):
@@ -2043,12 +2087,20 @@ def purchases_html(cat, start, end):
 
 def build_report_html(kind, start, end):
     S = report_sections(kind, start, end)
-    body = ""
+    total = sum(len(x["rows"]) for x in S if x["name"] not in SUMMARY_ONLY)
+    sec_count = sum(1 for x in S if x["name"] not in SUMMARY_ONLY)
+    sub = S[0]["period"] if S else f"الفترة: من {fmt_iso_date(start)} إلى {fmt_iso_date(end)}"
+    body = f'<div class="meta"><span class="chip">عدد الأقسام: {sec_count}</span><span class="chip">إجمالي السجلات: {total}</span><span class="chip">تاريخ الاستخراج: {today_text()}</span></div>'
     if kind == "all":
         body += html_table("ملخص التقرير", ["القسم", "عدد السجلات"],
-                           [(x["name"], len(x["rows"])) for x in S if x["name"] not in SUMMARY_ONLY], False)
-    body += "".join(html_table(x["title"], x["headers"], x["rows"]) for x in S)
-    sub = S[0]["period"] if S else ""
+                           [(x["name"], len(x["rows"])) for x in S if x["name"] not in SUMMARY_ONLY], False,
+                           footer=("الإجمالي", total))
+    for x in S:
+        note = x.get("period", "")
+        # لا نكرر فترة التقرير داخل كل قسم إلا لو مختلفة
+        if note == sub:
+            note = ""
+        body += html_table(x["title"], x["headers"], x["rows"], note=note)
     title = "التقرير الشامل" if kind == "all" else (S[0]["title"] if S else "تقرير")
     return html_page(title, sub, body)
 
@@ -6075,55 +6127,80 @@ class CenterApp:
 
     # ---------- التقارير ----------
     def show_reports(self):
-        self.page_title("استخراج وطباعة التقارير", "حدد الفترة ونوع التقرير، راجع الأعداد ثم استخرج ملف Excel أو اطبعه")
+        self.page_title("استخراج وطباعة التقارير", "اختر الفترة ونوع التقرير، ثم اعرض المعاينة أو استخرج Excel أو اطبع تقريرًا منظمًا ومفصلًا")
         panel = self.panel(); panel.pack(fill="x", padx=24, pady=8)
+
+        # ---- الفترة ----
+        period_box = tk.Frame(panel, bg=WHITE); period_box.pack(fill="x", padx=14, pady=(10, 4))
+        tk.Label(period_box, text="📅 فترة التقرير", bg=WHITE, fg=INK, font=(FONT, 12, "bold")).pack(anchor="e")
+        pr = tk.Frame(period_box, bg=WHITE); pr.pack(fill="x", pady=4)
         self.rep_from = tk.StringVar(value=today_text()); self.rep_to = tk.StringVar(value=today_text())
-        self.add_date(panel, "من تاريخ", self.rep_from, 0, 1)
-        self.add_date(panel, "إلى تاريخ", self.rep_to, 0, 0)
-        quick = tk.Frame(panel, bg=WHITE); quick.grid(row=0, column=2, padx=14, sticky="e")
-        for label, fn in [("اليوم", self.q_today), ("هذا الشهر", self.q_month), ("هذه السنة", self.q_year)]:
+        self.add_date(pr, "من تاريخ", self.rep_from, 0, 1)
+        self.add_date(pr, "إلى تاريخ", self.rep_to, 0, 0)
+        quick = tk.Frame(pr, bg=WHITE); quick.grid(row=0, column=2, padx=14, sticky="e")
+        for label, fn in [("اليوم", self.q_today), ("هذا الأسبوع", self.q_week), ("هذا الشهر", self.q_month), ("هذه السنة", self.q_year)]:
             self.btn(quick, label, fn, BLUE).pack(side="right", padx=3)
+
+        # ---- نوع التقرير ----
         self.report_type = tk.StringVar(value="all")
-        box = tk.Frame(panel, bg=WHITE); box.grid(row=1, column=0, columnspan=3, sticky="e", padx=14, pady=8)
-        opts = [("all", "كل السجلات"), ("visits", "الزيارات"), ("maintenance", "الصيانة"),
-                ("cleaning", "جرد النظافة"), ("paper", "الجرد الورقي"), ("toner", "جرد الأحبار"),
-                ("stockin", "الوارد للمخازن"), ("employees", "ملاحظات وأخطاء العاملين"), ("permits", "إذونات الخروج"),
-                ("attendance", "الحضور والانصراف"), ("absences", "الغياب والتأخير"), ("govatt", "حضور موظفي الجهات"),
-                ("govstaff", "قاعدة بيانات موظفي الجهات"), ("workers", "قاعدة العاملين")]
-        need_pg = {"visits": ("visits",), "maintenance": ("maintenance",), "cleaning": ("cleaning",), "paper": ("paper",),
-                   "toner": ("toner",), "stockin": ("cleaning", "paper", "toner"), "employees": ("employees",),
-                   "permits": ("attend",), "attendance": ("attend",), "absences": ("attend",),
-                   "govatt": ("gov",), "govstaff": ("govstaff",), "workers": ("workers",)}
-        opts = [o for o in opts if (o[0] == "all" and self.all_data_visible())
-                or (o[0] != "all" and any(self.can(pg, "view") for pg in need_pg.get(o[0], ())))]
-        self.report_type.set(opts[0][0] if opts else "none")
-        tk.Label(box, text="نوع التقرير", bg=WHITE, fg=TEXT, font=(FONT, 10, "bold")).grid(row=0, column=5, padx=8, sticky="e")
-        for i, (val, label) in enumerate(opts):
-            ttk.Radiobutton(box, text=label, value=val, variable=self.report_type).grid(
-                row=i // 5, column=4 - i % 5, padx=8, pady=2, sticky="e")
-        bx = tk.Frame(panel, bg=WHITE); bx.grid(row=2, column=0, columnspan=3, pady=12)
+        type_box = tk.Frame(panel, bg=WHITE); type_box.pack(fill="x", padx=14, pady=(6, 4))
+        tk.Label(type_box, text="📋 نوع التقرير", bg=WHITE, fg=INK, font=(FONT, 12, "bold")).pack(anchor="e", pady=(0, 4))
+
+        groups = [
+            ("عام", [("all", "كل السجلات (تقرير شامل)")]),
+            ("العمليات اليومية", [("visits", "الزيارات"), ("maintenance", "أعمال الصيانة"), ("tickets", "تيكتات الصيانة")]),
+            ("المخازن والمشتريات", [("cleaning", "جرد النظافة"), ("paper", "الجرد الورقي"), ("toner", "جرد الأحبار"), ("stockin", "الوارد للمخازن"), ("purchases", "المشتريات")]),
+            ("العاملون والحضور", [("attendance", "الحضور والانصراف"), ("permits", "إذونات الخروج"), ("absences", "الغياب والتأخير"), ("employees", "ملاحظات وأخطاء العاملين")]),
+            ("موظفو الجهات وقواعد البيانات", [("govatt", "حضور موظفي الجهات"), ("govstaff", "قاعدة بيانات موظفي الجهات"), ("workers", "قاعدة العاملين")]),
+        ]
+        need_pg = {
+            "visits": ("visits",), "maintenance": ("maintenance",), "tickets": ("maintenance",),
+            "cleaning": ("cleaning",), "paper": ("paper",), "toner": ("toner",),
+            "stockin": ("cleaning", "paper", "toner"), "purchases": ("purchases",),
+            "employees": ("employees",), "permits": ("attend",), "attendance": ("attend",), "absences": ("attend",),
+            "govatt": ("gov",), "govstaff": ("govstaff",), "workers": ("workers",),
+        }
+        allowed_opts = []
+        for gname, opts in groups:
+            gopts = [o for o in opts if (o[0] == "all" and self.all_data_visible())
+                     or (o[0] != "all" and any(self.can(pg, "view") for pg in need_pg.get(o[0], ())))]
+            if not gopts:
+                continue
+            gf = tk.Frame(type_box, bg=WHITE); gf.pack(fill="x", pady=2)
+            tk.Label(gf, text=gname + ":", bg=WHITE, fg=MUTED, font=(FONT, 9, "bold"), width=18, anchor="e").pack(side="right", padx=(8, 0))
+            row = tk.Frame(gf, bg=WHITE); row.pack(side="right", fill="x", expand=True)
+            for val, label in gopts:
+                ttk.Radiobutton(row, text=label, value=val, variable=self.report_type).pack(side="right", padx=6, pady=2)
+                allowed_opts.append(val)
+        self.report_type.set(allowed_opts[0] if allowed_opts else "none")
+
+        # ---- الإجراءات ----
+        bx = tk.Frame(panel, bg=WHITE); bx.pack(fill="x", padx=14, pady=(10, 12))
         self.btn(bx, "معاينة الأعداد", self.preview_counts, BLUE).pack(side="right", padx=6)
         self.btn(bx, "استخراج التقرير إلى Excel", self.export_report, GREEN).pack(side="right", padx=6)
         self.btn(bx, "🖨️ طباعة التقرير", self.print_report, PURPLE).pack(side="right", padx=6)
 
+        # ---- المعاينة ----
         self.preview_box = self.panel(); self.preview_box.pack(fill="both", expand=True, padx=24, pady=10)
-        tk.Label(self.preview_box, text="محتويات التقرير", bg=WHITE, fg=INK, font=(FONT, 14, "bold"),
+        tk.Label(self.preview_box, text="محتويات التقرير والمعاينة", bg=WHITE, fg=INK, font=(FONT, 14, "bold"),
                  anchor="e").pack(fill="x", padx=20, pady=(16, 6))
-        for line in ["• الزيارات: اسم الشخص، الجهة، سبب الزيارة، التاريخ والوقت.",
-                     "• الصيانة: الفني أو المسؤول، الشركة، ملاحظات الصيانة، التاريخ والوقت.",
-                     "• الجرد: الصنف، الكمية، الرصيد السابق، الوارد، والاستهلاك (السابق + الوارد - الجرد الجديد). والوارد للمخازن له تقرير مستقل.",
-                     "• ملاحظات وأخطاء العاملين: تفاصيل كل بيان + ورقة ملخص بعدد ملاحظات وأخطاء كل عامل.",
-                     "• إذونات الخروج والغياب والتأخير: تفاصيل كل بيان + ملخص بعدد إذونات وغياب وتأخير كل عامل.",
-                     "• حضور موظفي الجهات: تفاصيل كل دخول وانصراف + ملخص لكل موظف + ملخص لكل جهة (للفترة المحددة).",
-                     "• قاعدة بيانات موظفي الجهات: كل موظفي الجهات الثماني بالوظيفة والهاتف والرقم القومي والحالة.",
-                     "• كل تقرير مكتوب فيه: خدمات مصر - فرع الإسكندرية.",
-                     "• 🖨️ الطباعة: تفتح صفحة منسقة بلوجو خدمات مصر وخانات التوقيع وتبدأ نافذة الطباعة (ويمكن حفظها PDF).",
-                     "• اضغط «معاينة الأعداد» لترى عدد السجلات في كل قسم قبل الاستخراج."]:
+        for line in [
+            "• الزيارات: اسم الشخص، الجهة، سبب الزيارة، التاريخ والوقت.",
+            "• أعمال الصيانة: الفني/المسؤول، الجهة، ملاحظات الصيانة، تاريخ ووقت التسجيل.",
+            "• تيكتات الصيانة: تاريخ الفتح، الوقت، النوع، الحالة، تاريخ الانتهاء، الفني، الجهة، الملاحظات + ملخص حسب النوع.",
+            "• الجرد: الصنف، الكمية، الرصيد السابق، الوارد، والاستهلاك. والوارد للمخازن له تقرير مستقل.",
+            "• المشتريات: تفاصيل البنود + ملخص إجمالي حسب نوع المشتريات.",
+            "• ملاحظات وأخطاء العاملين: تفاصيل كل بيان + ملخص بعدد الملاحظات/الأخطاء/الإشادات لكل عامل.",
+            "• الحضور والانصراف والإذونات والغياب والتأخير: تفاصيل + ملخص لكل عامل.",
+            "• حضور موظفي الجهات: تفاصيل + ملخص لكل موظف ولكل جهة.",
+            "• قواعد البيانات: قاعدة العاملين وقاعدة بيانات موظفي الجهات.",
+            "• كل تقرير يشمل: خدمات مصر - فرع الإسكندرية، الفترة، تاريخ الاستخراج، وخانات التوقيع عند الطباعة.",
+            "• اضغط «معاينة الأعداد» لعرض عدد السجلات قبل الاستخراج/الطباعة."]:
             tk.Label(self.preview_box, text=line, bg=WHITE, fg=TEXT, font=(FONT, 10), anchor="e",
-                     justify="right").pack(fill="x", padx=22, pady=3)
+                     justify="right", wraplength=980).pack(fill="x", padx=22, pady=2)
         self.counts_lbl = tk.Label(self.preview_box, text="", bg=WHITE, fg=INK, font=(FONT, 11, "bold"),
                                    anchor="e", justify="right")
-        self.counts_lbl.pack(fill="x", padx=22, pady=(10, 6))
+        self.counts_lbl.pack(fill="x", padx=22, pady=(10, 10))
 
     # ---------- الإذونات والغياب ----------
     def show_attendance(self):
@@ -7334,6 +7411,11 @@ class CenterApp:
 
     def q_today(self):
         self.rep_from.set(today_text()); self.rep_to.set(today_text())
+
+    def q_week(self):
+        t = date.today()
+        a1 = t - timedelta(days=(t.weekday() - 5) % 7)  # السبت
+        self.rep_from.set(a1.strftime("%d/%m/%Y")); self.rep_to.set(today_text())
 
     def q_month(self):
         self.rep_from.set(date.today().replace(day=1).strftime("%d/%m/%Y")); self.rep_to.set(today_text())
