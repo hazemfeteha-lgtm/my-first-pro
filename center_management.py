@@ -22,7 +22,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.11.8"
+APP_VERSION = "2.11.9"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -483,6 +483,15 @@ NOTE_TARGET_ALL = "كل الوحدات"
 NOTE_PRIORITIES = ["عادية", "عاجلة"]
 NOTE_DEFAULT_TARGETS = ["الأمن", "الاستقبال", "الصيانة"]
 
+# تيكتات الصيانة
+MAINT_TICKET_TYPES = ["كهرباء", "سباكة", "تكييف وتبريد", "شبكات/كمبيوتر", "نجارة", "دهان وترميم", "نظافة", "أخرى"]
+MAINT_TICKET_STATUS_OPEN = "قائمة"
+MAINT_TICKET_STATUS_DONE = "انتهت"
+MAINT_TICKET_STATUSES = [MAINT_TICKET_STATUS_OPEN, MAINT_TICKET_STATUS_DONE]
+
+# طلبات شراء للاحتياج (تُسجَّل كملاحظات معلقة)
+PURCHASE_REQ_PREFIX = "🛒 مطلوب شراء:"
+
 
 def hash_pw(pw, salt):
     return hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"), bytes.fromhex(salt), 120000).hex()
@@ -651,6 +660,14 @@ def init_db(con):
     con.execute("""CREATE TABLE IF NOT EXISTS maintenance(
         id INTEGER PRIMARY KEY AUTOINCREMENT, person TEXT,
         entity TEXT, notes TEXT NOT NULL, created_at TEXT NOT NULL)""")
+    con.execute("""CREATE TABLE IF NOT EXISTS maintenance_tickets(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        t_date TEXT NOT NULL, t_time TEXT DEFAULT '',
+        m_type TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'قائمة',
+        end_date TEXT DEFAULT '', notes TEXT DEFAULT '',
+        person TEXT DEFAULT '', entity TEXT DEFAULT '',
+        created_at TEXT NOT NULL, done_at TEXT DEFAULT '',
+        maint_id INTEGER DEFAULT 0)""")
     con.execute("""CREATE TABLE IF NOT EXISTS inventory(
         id INTEGER PRIMARY KEY AUTOINCREMENT, week_from TEXT NOT NULL,
         week_to TEXT NOT NULL, item TEXT NOT NULL, quantity REAL NOT NULL,
@@ -4589,13 +4606,33 @@ class CenterApp:
         self.add_field(form, "ملاحظات الصيانة", self.maint_notes, 1, 0, 560)
         bx = tk.Frame(form, bg=WHITE); bx.grid(row=1, column=1, padx=14, pady=10, sticky="e")
         self.btn(bx, "حفظ عملية الصيانة", self.save_maintenance).pack(side="right", padx=4)
+        self.btn(bx, "🎫 تيكت صيانة جديد", self.maintenance_ticket_dialog, PURPLE).pack(side="right", padx=4)
         self.btn(bx, "✏️ تعديل المحدد", lambda: self.edit_record("maintenance", self.maint_tree), BLUE).pack(side="right", padx=4)
         self.btn(bx, "حذف المحدد", lambda: self.delete_selected("maintenance", self.maint_tree), RED).pack(side="right", padx=4)
         self.btn(bx, "🖨️ طباعة", lambda: self.print_table("maintenance"), AMBER).pack(side="right", padx=4)
         self.btn(bx, "📊 استخراج Excel", lambda: self.export_table("maintenance"), GREEN).pack(side="right", padx=4)
+
+        # ---- تيكتات الصيانة ----
+        tpanel = self.panel(); tpanel.pack(fill="x", padx=24, pady=(6, 0))
+        th = tk.Frame(tpanel, bg=WHITE); th.pack(fill="x", padx=12, pady=(8, 2))
+        tk.Label(th, text="🎫 تيكتات الصيانة", bg=WHITE, fg=INK, font=(FONT, 12, "bold")).pack(side="right")
+        self.maint_ticket_filter = tk.StringVar(value="قائمة")
+        tf = ttk.Combobox(th, textvariable=self.maint_ticket_filter, values=["الكل", "قائمة", "انتهت"],
+                          state="readonly", width=10, justify="right")
+        tf.pack(side="right", padx=10)
+        tf.bind("<<ComboboxSelected>>", lambda e: self.load_maint_tickets())
+        self.btn(th, "✅ إنهاء المحدد", self.finish_maint_ticket, GREEN).pack(side="left", padx=4)
+        self.btn(th, "🗑️ حذف تيكت", self.delete_maint_ticket, RED).pack(side="left", padx=4)
+        self.btn(th, "🔄 تحديث", self.load_maint_tickets, MUTED).pack(side="left", padx=4)
+        self.maint_tickets_tree = self.make_tree(tpanel, ("date", "time", "type", "status", "end", "person", "notes"),
+                                                 ("التاريخ", "الوقت", "نوع الصيانة", "الحالة", "تاريخ الانتهاء", "الفني/المسؤول", "ملاحظات"),
+                                                 (110, 80, 140, 90, 110, 150, 260), 5)
+        self.maint_tickets_tree.bind("<Double-1>", lambda e: self.finish_maint_ticket())
+
         self.maint_tree = self.make_tree(self.content, ("person", "entity", "notes", "time"),
                                          ("الفني / المسؤول", "الجهة / الشركة", "ملاحظات الصيانة", "تاريخ ووقت التسجيل"), (180, 180, 350, 190))
         self.maint_tree.bind("<Double-1>", lambda e: self.edit_record("maintenance", self.maint_tree))
+        self.load_maint_tickets()
         self.load_recent("maintenance", self.maint_tree)
 
     def save_maintenance(self):
@@ -4608,6 +4645,158 @@ class CenterApp:
         for v in (self.maint_person, self.maint_entity, self.maint_notes): v.set("")
         self.load_recent("maintenance", self.maint_tree)
         messagebox.showinfo("تم الحفظ", "تم تسجيل عملية الصيانة بالتاريخ والوقت.")
+
+    def _maint_time_picker(self, parent, row, col, hour_var, min_var):
+        box = tk.Frame(parent, bg=WHITE)
+        box.grid(row=row, column=col, padx=14, pady=8, sticky="e")
+        tk.Label(box, text="الوقت", bg=WHITE, fg=TEXT, font=(FONT, 10, "bold"), anchor="e").pack(fill="x", pady=(0, 4))
+        line = tk.Frame(box, bg=WHITE); line.pack(anchor="e")
+        hh = ttk.Combobox(line, textvariable=hour_var, values=[f"{i:02d}" for i in range(24)], state="readonly", width=4, justify="center")
+        mm = ttk.Combobox(line, textvariable=min_var, values=[f"{i:02d}" for i in range(0, 60, 5)], state="readonly", width=4, justify="center")
+        tk.Label(line, text=":", bg=WHITE, fg=TEXT, font=(FONT, 12, "bold")).pack(side="right", padx=2)
+        mm.pack(side="right", padx=2)
+        hh.pack(side="right", padx=2)
+        return box
+
+    def maintenance_ticket_dialog(self):
+        if not self.need("maintenance", "add"):
+            return
+        win = self._dialog("🎫 تيكت صيانة جديد", "760x620")
+        self._minsize(win, 680, 520)
+        bx = tk.Frame(win, bg=BG); bx.pack(side="bottom", fill="x", pady=10)
+        tk.Label(win, text="🎫 فتح تيكت صيانة", bg=BG, fg=INK, font=(FONT, 15, "bold")).pack(anchor="e", padx=20, pady=(12, 2))
+        tk.Label(win, text="كل الحقول الأساسية اختيار بالماوس. عند تغيير الحالة إلى «انتهت» تُضاف مباشرة لأعمال الصيانة.",
+                 bg=BG, fg=MUTED, font=(FONT, 9)).pack(anchor="e", padx=22)
+        form = self.panel(win); form.pack(fill="x", padx=16, pady=8)
+        now = datetime.now()
+        d_var = tk.StringVar(value=now.strftime("%d/%m/%Y"))
+        h_var = tk.StringVar(value=f"{now.hour:02d}")
+        m_var = tk.StringVar(value=f"{(now.minute // 5) * 5:02d}")
+        type_var = tk.StringVar(value=MAINT_TICKET_TYPES[0])
+        st_var = tk.StringVar(value=MAINT_TICKET_STATUS_OPEN)
+        end_var = tk.StringVar(value="")
+        person_var = tk.StringVar(value="")
+        entity_var = tk.StringVar(value="")
+        notes_var = tk.StringVar(value="")
+
+        self.add_date(form, "تاريخ فتح التيكت", d_var, 0, 2)
+        self._maint_time_picker(form, 0, 1, h_var, m_var)
+        self.add_combo(form, "نوع الصيانة", type_var, MAINT_TICKET_TYPES, 0, 0)
+        self.add_combo(form, "الحالة", st_var, MAINT_TICKET_STATUSES, 1, 2)
+        self.add_date(form, "تاريخ الانتهاء", end_var, 1, 1, optional=True)
+        self.add_combo(form, "الفني / المسؤول", person_var, self.worker_names(), 1, 0, readonly=False)
+        self.add_field(form, "الجهة / المكان", entity_var, 2, 2, 220)
+        self.add_field(form, "ملاحظات", notes_var, 2, 0, 420)
+
+        def on_status(*_):
+            if st_var.get() == MAINT_TICKET_STATUS_DONE and not end_var.get().strip():
+                end_var.set(datetime.now().strftime("%d/%m/%Y"))
+        st_var.trace_add("write", on_status)
+
+        def save():
+            t_date = d_var.get().strip()
+            t_time = f"{h_var.get().strip()}:{m_var.get().strip()}" if h_var.get().strip() and m_var.get().strip() else ""
+            m_type = type_var.get().strip()
+            status = st_var.get().strip()
+            end_date = end_var.get().strip()
+            person = person_var.get().strip()
+            entity = entity_var.get().strip()
+            notes = notes_var.get().strip()
+            if not t_date:
+                messagebox.showwarning("بيانات ناقصة", "اختر تاريخ فتح التيكت.", parent=win); return
+            if not m_type:
+                messagebox.showwarning("بيانات ناقصة", "اختر نوع الصيانة.", parent=win); return
+            if status == MAINT_TICKET_STATUS_DONE and not end_date:
+                end_date = datetime.now().strftime("%d/%m/%Y")
+            done_at = now_stamp() if status == MAINT_TICKET_STATUS_DONE else ""
+            created = now_stamp()
+            with db() as con:
+                cur = con.execute(
+                    "INSERT INTO maintenance_tickets(t_date,t_time,m_type,status,end_date,notes,person,entity,created_at,done_at,maint_id) VALUES(?,?,?,?,?,?,?,?,?,?,0)",
+                    (t_date, t_time, m_type, status, end_date, notes, person, entity, created, done_at))
+                tid = cur.lastrowid
+                if status == MAINT_TICKET_STATUS_DONE:
+                    maint_notes = f"[تيكت #{tid}] {m_type}" + (f" — {notes}" if notes else "")
+                    cur2 = con.execute("INSERT INTO maintenance(person,entity,notes,created_at) VALUES(?,?,?,?)",
+                                       (person, entity, maint_notes, now_stamp()))
+                    con.execute("UPDATE maintenance_tickets SET maint_id=? WHERE id=?", (cur2.lastrowid, tid))
+            win.destroy()
+            self.load_maint_tickets()
+            self.load_recent("maintenance", self.maint_tree)
+            messagebox.showinfo("تم الحفظ", "تم حفظ تيكت الصيانة" + (" وإضافته لأعمال الصيانة." if status == MAINT_TICKET_STATUS_DONE else " كتيكت قائم."))
+
+        self.btn(bx, "حفظ التيكت", save, PRIMARY).pack(side="right", padx=8)
+        self.btn(bx, "إلغاء", win.destroy, MUTED).pack(side="right")
+
+    def load_maint_tickets(self):
+        tree = getattr(self, "maint_tickets_tree", None)
+        if not tree:
+            return
+        try:
+            if not tree.winfo_exists():
+                return
+        except Exception:
+            return
+        flt = self.maint_ticket_filter.get() if getattr(self, "maint_ticket_filter", None) else "الكل"
+        try:
+            with db() as con:
+                rows = con.execute(
+                    "SELECT id, t_date, t_time, m_type, status, end_date, person, notes, maint_id "
+                    "FROM maintenance_tickets ORDER BY id DESC LIMIT 300").fetchall()
+        except Exception as ex:
+            messagebox.showerror("خطأ", f"تعذر تحميل تيكتات الصيانة:\n{ex}"); return
+        tree.delete(*tree.get_children())
+        for n, r in enumerate(rows):
+            rid, t_date, t_time, m_type, status, end_date, person, notes, maint_id = r
+            if flt != "الكل" and status != flt:
+                continue
+            tags = ["odd"] if n % 2 else []
+            tags.append("good" if status == MAINT_TICKET_STATUS_DONE else "bad")
+            tree.insert("", "end", iid=str(rid), tags=tags, values=(
+                t_date or "", t_time or "", m_type or "", status or "", end_date or "", person or "", notes or ""))
+
+    def finish_maint_ticket(self):
+        tree = getattr(self, "maint_tickets_tree", None)
+        if not tree:
+            return
+        sel = tree.selection()
+        if not sel:
+            messagebox.showwarning("اختر تيكت", "حدد تيكت الصيانة أولًا."); return
+        tid = int(sel[0])
+        with db() as con:
+            row = con.execute("SELECT status, m_type, notes, person, entity, end_date, maint_id FROM maintenance_tickets WHERE id=?", (tid,)).fetchone()
+        if not row:
+            self.load_maint_tickets(); return
+        status, m_type, notes, person, entity, end_date, maint_id = row
+        if status == MAINT_TICKET_STATUS_DONE:
+            messagebox.showinfo("تيكت منتهي", "هذا التيكت مُسجَّل كمنتهي بالفعل."); return
+        if not messagebox.askyesno("إنهاء تيكت الصيانة", f"تأكيد إنهاء تيكت #{tid} ({m_type})؟\nسيتم إضافته مباشرة إلى أعمال الصيانة."):
+            return
+        end_date = end_date.strip() if end_date else datetime.now().strftime("%d/%m/%Y")
+        done_at = now_stamp()
+        maint_notes = f"[تيكت #{tid}] {m_type}" + (f" — {notes}" if notes else "")
+        with db() as con:
+            cur = con.execute("INSERT INTO maintenance(person,entity,notes,created_at) VALUES(?,?,?,?)",
+                              (person or "", entity or "", maint_notes, now_stamp()))
+            con.execute("UPDATE maintenance_tickets SET status=?, end_date=?, done_at=?, maint_id=? WHERE id=?",
+                        (MAINT_TICKET_STATUS_DONE, end_date, done_at, cur.lastrowid, tid))
+        self.load_maint_tickets()
+        self.load_recent("maintenance", self.maint_tree)
+        messagebox.showinfo("تم", "تم إنهاء التيكت وإضافته لأعمال الصيانة.")
+
+    def delete_maint_ticket(self):
+        tree = getattr(self, "maint_tickets_tree", None)
+        if not tree:
+            return
+        sel = tree.selection()
+        if not sel:
+            messagebox.showwarning("اختر تيكت", "حدد تيكت الصيانة المطلوب حذفه."); return
+        tid = int(sel[0])
+        if not messagebox.askyesno("تأكيد الحذف", f"حذف تيكت الصيانة #{tid}؟\n(لن يحذف سجل أعمال الصيانة المُضاف منه إن وُجد)"):
+            return
+        with db() as con:
+            con.execute("DELETE FROM maintenance_tickets WHERE id=?", (tid,))
+        self.load_maint_tickets()
 
     # ---------- ملاحظات وأخطاء العاملين ----------
     def show_employees(self):
@@ -5482,6 +5671,7 @@ class CenterApp:
         bx = tk.Frame(top, bg=WHITE); bx.grid(row=1, column=0, columnspan=3, sticky="e", padx=14, pady=(0, 10))
         self.btn(bx, "➕ تسجيل مشتريات جديدة", lambda: self.purchase_dialog(
             self.pur_cat.get() if self.pur_cat.get() in PURCH_CATS else "paper"), GREEN).pack(side="right", padx=4)
+        self.btn(bx, "📋 مطلوب شراء للاحتياج", self.purchase_request_dialog, BLUE).pack(side="right", padx=4)
         self.btn(bx, "🧾 عرض صورة الفاتورة", self.view_invoice, BLUE).pack(side="right", padx=4)
         self.btn(bx, "📎 إدراج فاتورة من صورة", self.attach_invoice, PURPLE).pack(side="right", padx=4)
         self.btn(bx, "👤 تعديل «تم السداد بواسطة»", self.edit_paid_by, TEAL).pack(side="right", padx=4)
@@ -5489,13 +5679,25 @@ class CenterApp:
         self.btn(bx, "🖨️ طباعة", self.print_purchases, AMBER).pack(side="right", padx=4)
         self.btn(bx, "📊 استخراج Excel بالمدة", self.export_purchases, GREEN).pack(side="right", padx=4)
         self.btn(bx, "🗑️ حذف المحدد", self.delete_purchase, RED).pack(side="right", padx=4)
+        # ---- طلبات شراء للاحتياج (معلقة) ----
+        req_panel = self.panel(); req_panel.pack(fill="x", padx=24, pady=(6, 0))
+        rh = tk.Frame(req_panel, bg=WHITE); rh.pack(fill="x", padx=12, pady=(8, 2))
+        tk.Label(rh, text="📋 مطلوب شراء للاحتياج (معلّق)", bg=WHITE, fg=INK, font=(FONT, 12, "bold")).pack(side="right")
+        self.btn(rh, "✅ انتهاء المحدد", self.finish_purchase_request, GREEN).pack(side="left", padx=4)
+        self.btn(rh, "🔄 تحديث", self.load_purchase_requests, MUTED).pack(side="left", padx=4)
+        self.pur_req_tree = self.make_tree(req_panel, ("body", "by", "time", "status"),
+                                           ("المطلوب شراؤه / الاحتياج", "بواسطة", "التاريخ والوقت", "الحالة"),
+                                           (520, 140, 170, 90), 4)
+        self.pur_req_tree.bind("<Double-1>", lambda e: self.finish_purchase_request())
+
         self.pur_total = tk.Label(self.content, text="", bg=BG, fg=INK, font=(FONT, 11, "bold"))
         self.pur_total.pack(side="bottom", pady=(0, 8))
         self.pur_tree = self.make_tree(
             self.content, ("date", "cat", "item", "qty", "price", "total", "sup", "no", "paid", "inv"),
             ("التاريخ", "النوع", "الصنف", "الكمية", "سعر الوحدة", "الإجمالي", "المورد", "رقم الفاتورة", "سُدد بواسطة", "الفاتورة"),
-            (90, 65, 170, 60, 80, 90, 120, 85, 120, 65), 12)
+            (90, 65, 170, 60, 80, 90, 120, 85, 120, 65), 10)
         self.pur_tree.bind("<Double-1>", lambda e: self.view_invoice())
+        self.load_purchase_requests()
         self.load_purchases()
 
     def _pur_period(self):
@@ -5520,6 +5722,98 @@ class CenterApp:
         total = sum(r[6] or 0 for r in rows)
         extra = f"   (معروض أحدث 500 من {len(rows)})" if len(rows) > 500 else ""
         self.pur_total.config(text=f"عدد البنود: {len(rows)}   |   إجمالي المشتريات: {fmt_money(total)} جنيه{extra}")
+
+    def purchase_request_dialog(self):
+        if not (self.can("purchases", "add") or self.can("notes", "add") or self.user.get("is_admin")):
+            messagebox.showwarning("غير مسموح", "لا تملك صلاحية إنشاء طلب شراء للاحتياج.", parent=self.root)
+            return
+        win = self._dialog("📋 مطلوب شراء للاحتياج", "620x360")
+        self._minsize(win, 540, 300)
+        bx = tk.Frame(win, bg=BG); bx.pack(side="bottom", fill="x", pady=10)
+        tk.Label(win, text="📋 مطلوب شراء للاحتياج", bg=BG, fg=INK, font=(FONT, 15, "bold")).pack(anchor="e", padx=20, pady=(12, 2))
+        tk.Label(win, text="اكتب الاحتياج المطلوب شراؤه — سيتم تسجيله كملاحظة معلقة بتنبيه للمتابعة حتى تضغط «انتهاء».",
+                 bg=BG, fg=MUTED, font=(FONT, 9), wraplength=560, justify="right").pack(anchor="e", padx=22)
+        form = self.panel(win); form.pack(fill="x", padx=16, pady=8)
+        item_var = tk.StringVar()
+        qty_var = tk.StringVar()
+        note_var = tk.StringVar()
+        self.add_field(form, "المطلوب شراؤه / الصنف", item_var, 0, 0, 420)
+        self.add_field(form, "الكمية / التفاصيل", qty_var, 1, 1, 180)
+        self.add_field(form, "ملاحظة إضافية (اختياري)", note_var, 1, 0, 260)
+
+        def save():
+            item = item_var.get().strip()
+            if not item:
+                messagebox.showwarning("بيانات ناقصة", "اكتب المطلوب شراؤه أولًا.", parent=win); return
+            qty = qty_var.get().strip()
+            extra = note_var.get().strip()
+            body = f"{PURCHASE_REQ_PREFIX} {item}"
+            if qty:
+                body += f" | الكمية/التفاصيل: {qty}"
+            if extra:
+                body += f" | ملاحظة: {extra}"
+            with db() as con:
+                con.execute("INSERT INTO notes(body,target,priority,created_by,created_at,status) VALUES(?,?,?,?,?,'new')",
+                            (body, "المشتريات", "عاجلة", self.user["username"], now_stamp()))
+            win.destroy()
+            self.load_purchase_requests()
+            self.load_notes() if getattr(self, "notes_tree", None) else None
+            self.build_notes_banner()
+            messagebox.showinfo("تم التسجيل", "تم تسجيل طلب الشراء كملاحظة معلقة بتنبيه.\nيمكنك إنهاؤه من المشتريات أو من صفحة الملاحظات.", parent=self.root)
+
+        self.btn(bx, "حفظ الطلب كمعلّق", save, PRIMARY).pack(side="right", padx=8)
+        self.btn(bx, "إلغاء", win.destroy, MUTED).pack(side="right")
+
+    def load_purchase_requests(self):
+        tree = getattr(self, "pur_req_tree", None)
+        if not tree:
+            return
+        try:
+            if not tree.winfo_exists():
+                return
+        except Exception:
+            return
+        try:
+            with db() as con:
+                rows = con.execute(
+                    "SELECT id, body, created_by, created_at, status FROM notes "
+                    "WHERE status != 'done' AND body LIKE ? ORDER BY id DESC LIMIT 200",
+                    (PURCHASE_REQ_PREFIX + "%",)).fetchall()
+        except Exception as ex:
+            messagebox.showerror("خطأ", f"تعذر تحميل طلبات الشراء:\n{ex}"); return
+        tree.delete(*tree.get_children())
+        for n, r in enumerate(rows):
+            rid, body, by, at, status = r
+            disp = (body or "").replace(PURCHASE_REQ_PREFIX, "", 1).strip()
+            tags = ["odd"] if n % 2 else []
+            tags.append("bad")
+            tree.insert("", "end", iid=str(rid), tags=tags, values=(disp, by or "", fmt_stamp(at), "معلّق"))
+
+    def finish_purchase_request(self):
+        tree = getattr(self, "pur_req_tree", None)
+        if not tree:
+            return
+        sel = tree.selection()
+        if not sel:
+            messagebox.showwarning("اختر طلبًا", "حدد طلب الشراء المطلوب إنهاؤه.", parent=self.root); return
+        nid = int(sel[0])
+        if not messagebox.askyesno("إنهاء طلب الشراء", "تأكيد إنهاء طلب الشراء المحدد؟\nسيختفي من القائمة المعلقة.", parent=self.root):
+            return
+        try:
+            if netmod and NET_MODE == netmod.MODE_CLIENT:
+                res = netmod.mark_note_done(NET_CFG, nid)
+                if not res.get("ok"):
+                    messagebox.showerror("خطأ", res.get("error") or "تعذر تحديث الطلب", parent=self.root); return
+            else:
+                with db() as con:
+                    con.execute("UPDATE notes SET status='done', done_by=?, done_at=? WHERE id=?",
+                                (self.user["username"], now_stamp(), nid))
+        except Exception as ex:
+            messagebox.showerror("خطأ", f"تعذر إنهاء الطلب:\n{ex}", parent=self.root); return
+        self.load_purchase_requests()
+        if getattr(self, "active_key", None) == "notes" and getattr(self, "notes_tree", None):
+            self.load_notes()
+        self.build_notes_banner()
 
     def _invoice_of(self, rid):
         with db() as con:

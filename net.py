@@ -102,6 +102,7 @@ _FROM_RE = re.compile(r"\bFROM\s+[\"`\[]?([A-Za-z_][A-Za-z0-9_]*)", re.I | re.S)
 _TABLE_PAGE = {
     "visits": "visits",
     "maintenance": "maintenance",
+    "maintenance_tickets": "maintenance",
     "employees": "workers",
     "employee_notes": "employees",
     "purchases": "purchases",
