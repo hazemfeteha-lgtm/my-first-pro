@@ -944,11 +944,16 @@ _AR_LETTER = "\u0621-\u064A"
 
 # ------------------------------------------------------------ Arabic shaping
 # Tk on X11 (Linux) does not shape or reorder Arabic.  On Windows, most
-# modern Tk builds shape Arabic, but some packaged/bundled builds still show
-# disconnected letters.  We enable shaping when the reshaper libs are
-# available; set KM_AR_SHAPE=0 to disable if a platform already shapes
-# correctly and double-shaping appears.
-_NEEDS_SHAPING = _os.environ.get("KM_AR_SHAPE", "1").strip() != "0"
+# modern Tk builds shape Arabic correctly; forcing reshaping there can cause
+# double-shaping/reversed text.  Default: shape on non-Windows only.
+# Override: KM_AR_SHAPE=1 force on, KM_AR_SHAPE=0 force off.
+_km_shape = _os.environ.get("KM_AR_SHAPE", "").strip()
+if _km_shape == "1":
+    _NEEDS_SHAPING = True
+elif _km_shape == "0":
+    _NEEDS_SHAPING = False
+else:
+    _NEEDS_SHAPING = not _sys.platform.startswith("win")
 try:
     import arabic_reshaper as _reshaper
     from bidi.algorithm import get_display as _bidi_display
