@@ -22,7 +22,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 APP_NAME = "خدمات مصر"
-APP_VERSION = "2.12.3"
+APP_VERSION = "2.13.0"
 DESIGNER = "حازم فتيحه"
 BRANCH = "الإسكندرية"
 
@@ -786,6 +786,18 @@ def db():
 
 
 BACKUP_DIR = os.path.join(BASE, "backups")
+LOG_PATH = os.path.join(BASE, "app.log")
+
+
+def log_error(ctx, ex=None):
+    """يسجل خطأ غير قاتل في app.log للمساعدة في التشخيص (لا يوقف البرنامج)."""
+    try:
+        os.makedirs(BASE, exist_ok=True)
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            f.write(f"[{ts}] {ctx}: {ex!r}\n")
+    except Exception:
+        pass
 
 
 def backup_now(tag=None):
@@ -910,6 +922,24 @@ def validate_backup_db(path):
     return True, "", nrec
 
 
+def check_db_integrity(db_path=None):
+    """يفحص سلامة قاعدة البيانات الحالية أو ملف محدد. يرجع (ok, msg)."""
+    path = db_path or DB_PATH
+    if not os.path.exists(path):
+        return False, "ملف قاعدة البيانات غير موجود."
+    try:
+        con = sqlite3.connect(path)
+        try:
+            res = con.execute("PRAGMA integrity_check").fetchone()[0]
+        finally:
+            con.close()
+    except sqlite3.Error as ex:
+        return False, f"تعذر فحص قاعدة البيانات:\n{ex}"
+    if res == "ok":
+        return True, "فحص السلامة سليم (integrity_check = ok)."
+    return False, f"تم اكتشاف مشكلة في سلامة قاعدة البيانات:\n{res}"
+
+
 def open_backup_archive(path):
     """يفتح نسخة احتياطية (.db أو .zip). يرجع (db_file, photos_src, tmpdir).
 
@@ -978,8 +1008,8 @@ def do_restore(db_file, photos_src=None):
                 try:
                     os.makedirs(os.path.dirname(d), exist_ok=True)
                     shutil.copy2(s, d)
-                except OSError:
-                    pass
+                except OSError as ex:
+                    log_error("restore photo copy", ex)
     return safety
 
 
@@ -2128,12 +2158,35 @@ def build_report_html(kind, start, end):
 POLARITY = {"الأخطاء": -1, "التنبيهات الشفهية": -1, "الإشادات": 1, "أيام الغياب": -1, "مرات التأخير": -1}   # الزيادة سيئة (-1) أو جيدة (+1)
 
 
-def metrics(start, end):
+COMPARE_METRIC_PERMS = {
+    "الزيارات": "visits",
+    "أعمال الصيانة": "maintenance",
+    "الملاحظات": "employees",
+    "الأخطاء": "employees",
+    "التنبيهات الشفهية": "employees",
+    "الإشادات": "employees",
+    "إذونات الخروج": "attend",
+    "أيام الغياب": "attend",
+    "مرات التأخير": "attend",
+    "عمليات الجرد": ("cleaning", "paper", "toner"),
+}
+
+
+def _compare_allowed_metrics(can_view):
+    allowed = []
+    for k, perm in COMPARE_METRIC_PERMS.items():
+        perms = perm if isinstance(perm, (tuple, list)) else (perm,)
+        if any(can_view(p) for p in perms):
+            allowed.append(k)
+    return allowed
+
+
+def metrics(start, end, allowed_keys=None):
     with db() as con:
         def one(sql, *a):
             return con.execute(sql, a).fetchone()[0]
         d = "date(created_at) BETWEEN ? AND ?"
-        return {
+        data = {
             "الزيارات": one(f"SELECT COUNT(*) FROM visits WHERE {d}", start, end),
             "أعمال الصيانة": one(f"SELECT COUNT(*) FROM maintenance WHERE {d}", start, end),
             "الملاحظات": one(f"SELECT COUNT(*) FROM employee_notes WHERE kind='ملاحظة' AND {d}", start, end),
@@ -2146,6 +2199,9 @@ def metrics(start, end):
             "عمليات الجرد": one("SELECT COUNT(*) FROM (SELECT DISTINCT category, week_from, week_to FROM inventory "
                                "WHERE week_to>=? AND week_from<=?)", start, end),
         }
+    if allowed_keys is not None:
+        data = {k: data[k] for k in allowed_keys if k in data}
+    return data
 
 
 def emp_stats(start, end):
@@ -2186,20 +2242,21 @@ def make_insights(rows, emps):
     return out or ["لا توجد فروقات بين الفترتين أو لا توجد بيانات كافية للمقارنة."]
 
 
-def compare_periods(a1, a2, b1, b2):
+def compare_periods(a1, a2, b1, b2, allowed_keys=None, include_emps=True):
     """أ = الفترة الحالية، ب = الفترة السابقة (تواريخ ISO)."""
-    ma, mb = metrics(a1, a2), metrics(b1, b2)
+    ma, mb = metrics(a1, a2, allowed_keys), metrics(b1, b2, allowed_keys)
     rows = []
     for k in ma:
         d = ma[k] - mb[k]
         rows.append((k, ma[k], mb[k], d, None if mb[k] == 0 else round(d * 100 / mb[k])))
-    ea, eb = emp_stats(a1, a2), emp_stats(b1, b2)
     emps = []
-    for name in set(ea) | set(eb):
-        x, y = ea.get(name, _ZERO), eb.get(name, _ZERO)
-        emps.append({"name": name, "dept": x["dept"] or y["dept"], "err_a": x["err"], "err_b": y["err"],
-                     "note_a": x["note"], "warn_a": x["warn"], "praise_a": x["praise"], "praise_b": y["praise"]})
-    emps.sort(key=lambda e: (-e["err_a"], -(e["err_a"] - e["err_b"]), e["name"]))
+    if include_emps:
+        ea, eb = emp_stats(a1, a2), emp_stats(b1, b2)
+        for name in set(ea) | set(eb):
+            x, y = ea.get(name, _ZERO), eb.get(name, _ZERO)
+            emps.append({"name": name, "dept": x["dept"] or y["dept"], "err_a": x["err"], "err_b": y["err"],
+                         "note_a": x["note"], "warn_a": x["warn"], "praise_a": x["praise"], "praise_b": y["praise"]})
+        emps.sort(key=lambda e: (-e["err_a"], -(e["err_a"] - e["err_b"]), e["name"]))
     return {"a": (a1, a2), "b": (b1, b2), "rows": rows, "emps": emps, "insights": make_insights(rows, emps)}
 
 
@@ -2393,7 +2450,13 @@ def login_dialog(root):
         if user:
             res["user"] = user; win.destroy(); return
         if why == "offline":
-            messagebox.showerror("الشبكة", "تعذر الاتصال بالجهاز الرئيسي.\nاتأكد أن الجهاز الرئيسي مفتوح والبرنامج شغال عليه، وأن الشبكة متصلة.", parent=win)
+            detail = ""
+            try:
+                if netmod and NET_CFG:
+                    detail = "\n\nتشخيص الاتصال:\n" + netmod.diagnose_connection(NET_CFG)
+            except Exception:
+                pass
+            messagebox.showerror("الشبكة", "تعذر الاتصال بالجهاز الرئيسي.\nاتأكد أن الجهاز الرئيسي مفتوح والبرنامج شغال عليه، وأن الشبكة متصلة." + detail, parent=win)
             return
         res["tries"] += 1
         if res["tries"] >= 5:
@@ -3595,7 +3658,11 @@ class CenterApp:
                 else:
                     messagebox.showerror("خطأ", res.get("error") or "تعذر إنشاء النسخة")
             except Exception as ex:
-                messagebox.showerror("خطأ", f"تعذر الاتصال بالجهاز الرئيسي:\n{ex}")
+                diag = ""
+                try:
+                    if netmod and NET_CFG: diag = "\n\nتشخيص الاتصال:\n" + netmod.diagnose_connection(NET_CFG)
+                except Exception: pass
+                messagebox.showerror("خطأ", f"تعذر الاتصال بالجهاز الرئيسي:\n{ex}{diag}")
             return
         try:
             dest = backup_full_now() if full else backup_now()
@@ -3644,14 +3711,34 @@ class CenterApp:
             try:
                 rows = netmod.list_backups(NET_CFG) if is_client else list_backups()
             except Exception as ex:
-                info.config(text=f"تعذر الاتصال بالجهاز الرئيسي: {ex}", fg=RED); return
+                diag = ""
+                try:
+                    if netmod and NET_CFG: diag = " | " + netmod.diagnose_connection(NET_CFG).replace("\n"," ")
+                except Exception: pass
+                info.config(text=f"تعذر الاتصال بالجهاز الرئيسي: {ex}{diag}", fg=RED); return
             total = 0
+            newest = None
             for r in rows:
                 when = datetime.fromtimestamp(r["mtime"]).strftime("%d/%m/%Y %I:%M %p")
                 iid = tree.insert("", "end", values=(r["kind"], when, human(r["size"]), r["name"]))
                 by_iid[iid] = r; total += r["size"]
-            info.config(text="عدد النسخ: %d   |   الحجم الإجمالي: %s   |   المجلد: %s"
-                             % (len(rows), human(total), BACKUP_DIR if not is_client else "على الجهاز الرئيسي"), fg=TEXT)
+                if newest is None or r["mtime"] > newest:
+                    newest = r["mtime"]
+            warn = ""
+            fg = TEXT
+            if not rows:
+                warn = "  ⚠️ لا توجد نسخ احتياطية - يُنصح بإنشاء نسخة الآن."
+                fg = RED
+            elif newest:
+                age_days = (datetime.now() - datetime.fromtimestamp(newest)).total_seconds() / 86400
+                if age_days > 3:
+                    warn = f"  ⚠️ آخر نسخة منذ {age_days:.1f} يوم - يُنصح بإنشاء نسخة جديدة."
+                    fg = ORANGE if age_days <= 7 else RED
+            if total > 1024 * 1024 * 1024:
+                warn += "  ⚠️ حجم النسخ كبير - راجع النسخ القديمة."
+                fg = ORANGE if fg == TEXT else fg
+            info.config(text="عدد النسخ: %d   |   الحجم الإجمالي: %s   |   المجلد: %s%s"
+                             % (len(rows), human(total), BACKUP_DIR if not is_client else "على الجهاز الرئيسي", warn), fg=fg)
 
         def sel():
             s = tree.selection()
@@ -3719,10 +3806,43 @@ class CenterApp:
             except Exception as ex:
                 messagebox.showerror("خطأ", f"تعذر فتح المجلد:\n{ex}")
 
+        def do_integrity():
+            r = sel()
+            if r:
+                path = r["path"]
+                if is_client:
+                    messagebox.showinfo("فحص السلامة", "فحص النسخة المختارة متاح على الجهاز الرئيسي فقط. سيتم فحص قاعدة البيانات الحالية بدلًا من ذلك.", parent=win)
+                    path = None
+                else:
+                    if path.lower().endswith(".zip"):
+                        try:
+                            dbf, _ps, tmp = open_backup_archive(path)
+                            try:
+                                ok, msg, nrec = validate_backup_db(dbf)
+                                if ok:
+                                    msg = f"النسخة سليمة. عدد السجلات المرجعية: {nrec}\n{msg}"
+                            finally:
+                                if tmp: shutil.rmtree(tmp, ignore_errors=True)
+                        except Exception as ex:
+                            ok, msg = False, f"تعذر فحص النسخة:\n{ex}"
+                    else:
+                        ok, msg, nrec = validate_backup_db(path)
+                        if ok:
+                            msg = f"النسخة سليمة. عدد السجلات المرجعية: {nrec}"
+                    (messagebox.showinfo if ok else messagebox.showerror)("فحص سلامة النسخة", msg, parent=win)
+                    return
+            # فحص قاعدة البيانات الحالية
+            if is_client:
+                messagebox.showinfo("فحص السلامة", "فحص سلامة قاعدة البيانات يتم على الجهاز الرئيسي.", parent=win)
+                return
+            ok, msg = check_db_integrity(DB_PATH)
+            (messagebox.showinfo if ok else messagebox.showerror)("فحص سلامة قاعدة البيانات", msg, parent=win)
+
         bar = tk.Frame(win, bg=BG); bar.pack(fill="x", padx=20, pady=(0, 14))
         self.btn(bar, "🗜️ نسخة كاملة (قاعدة + صور)", do_full, GREEN).pack(side="right", padx=5)
         self.btn(bar, "💾 نسخة سريعة", do_quick, PRIMARY).pack(side="right", padx=5)
         self.btn(bar, "♻️ استرجاع المختار", do_restore, GOLD).pack(side="right", padx=5)
+        self.btn(bar, "🩺 فحص السلامة", do_integrity, TEAL).pack(side="right", padx=5)
         self.btn(bar, "🗑️ حذف المختار", do_delete, RED).pack(side="right", padx=5)
         self.btn(bar, "🔄 تحديث", refresh, MUTED).pack(side="left", padx=5)
         self.btn(bar, "📂 فتح المجلد", open_dir, MUTED).pack(side="left", padx=5)
@@ -4522,6 +4642,9 @@ class CenterApp:
 
     def mark_note_done(self, note_id):
         """يعلّم الملاحظة كـ «تم» (من أي وحدة)."""
+        if not self.can("notes", "add") and not self.can("notes", "edit"):
+            messagebox.showwarning("غير مسموح", "تحديث حالة الملاحظة يحتاج صلاحية إضافة أو تعديل على الملاحظات.")
+            return
         try:
             nid = int(note_id)
         except Exception:
@@ -7385,13 +7508,20 @@ class CenterApp:
     def run_compare(self):
         p = self.read_compare()
         if not p: return
-        self.cmp_data = data = compare_periods(*p)
+        allowed_keys = _compare_allowed_metrics(lambda pg: self.can(pg, "view"))
+        include_emps = self.can("employees", "view")
+        self.cmp_data = data = compare_periods(*p, allowed_keys=allowed_keys, include_emps=include_emps)
+        hidden = [k for k in COMPARE_METRIC_PERMS if k not in allowed_keys]
         for w in self.cmp_area.winfo_children():
             w.destroy()
+        if hidden:
+            tk.Label(self.cmp_area, text="ملاحظة: بعض بنود المقارنة مخفية لعدم وجود صلاحية عرض عليها.", bg=BG, fg=AMBER, font=(FONT, 9, "bold")).pack(anchor="e", padx=24, pady=(2, 0))
         self.insight_box(self.cmp_area, "🧠 الملخص الذكي", data["insights"]).pack(fill="x", padx=31, pady=(4, 2))
         nb = ttk.Notebook(self.cmp_area); nb.pack(fill="both", expand=True, padx=24, pady=(6, 8))
         t1 = tk.Frame(nb, bg=BG); t2 = tk.Frame(nb, bg=BG)
-        nb.add(t1, text="  الملخص والرسم البياني  "); nb.add(t2, text="  مقارنة العاملين  ")
+        nb.add(t1, text="  الملخص والرسم البياني  ")
+        if include_emps:
+            nb.add(t2, text="  مقارنة العاملين  ")
 
         holder = tk.Frame(t1, bg=BG); holder.pack(fill="both", expand=True)
         tf = tk.Frame(holder, bg=BG); tf.pack(side="right", fill="y")
@@ -7408,16 +7538,17 @@ class CenterApp:
         labels = [r[0] for r in data["rows"]]
         cv.bind("<Configure>", lambda e: draw_bars(cv, labels, [r[1] for r in data["rows"]], [r[2] for r in data["rows"]]))
 
-        et = self.make_tree(t2, ("name", "dept", "ea", "eb", "d", "pa", "na"),
-                            ("اسم العامل", "القسم", "أخطاء حالية", "أخطاء سابقة", "الفرق", "إشادات حالية", "ملاحظات حالية"),
-                            (190, 80, 100, 100, 80, 100, 110), 9)
-        for n, e in enumerate(data["emps"]):
-            d = e["err_a"] - e["err_b"]
-            tags = ["odd"] if n % 2 else []
-            if d > 0: tags.append("bad")
-            elif d < 0: tags.append("good")
-            et.insert("", "end", values=(e["name"], e["dept"], e["err_a"], e["err_b"], _sign_txt(d, None)[0],
-                                         e["praise_a"], e["note_a"]), tags=tags)
+        if include_emps:
+            et = self.make_tree(t2, ("name", "dept", "ea", "eb", "d", "pa", "na"),
+                                ("اسم العامل", "القسم", "أخطاء حالية", "أخطاء سابقة", "الفرق", "إشادات حالية", "ملاحظات حالية"),
+                                (190, 80, 100, 100, 80, 100, 110), 9)
+            for n, e in enumerate(data["emps"]):
+                d = e["err_a"] - e["err_b"]
+                tags = ["odd"] if n % 2 else []
+                if d > 0: tags.append("bad")
+                elif d < 0: tags.append("good")
+                et.insert("", "end", values=(e["name"], e["dept"], e["err_a"], e["err_b"], _sign_txt(d, None)[0],
+                                             e["praise_a"], e["note_a"]), tags=tags)
 
     def print_compare(self):
         if not self.cmp_data: self.run_compare()

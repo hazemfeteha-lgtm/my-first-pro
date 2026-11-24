@@ -344,6 +344,44 @@ def ping(cfg, timeout=4):
     return _get(base_url(cfg) + "/ping?token=" + q + "&station=" + st, timeout)
 
 
+def diagnose_connection(cfg, timeout=4):
+    """تشخيص سريع لمشكلة الاتصال بالجهاز الرئيسي. يرجع نص عربي واضح."""
+    host = (cfg.get("host") or "").strip()
+    port = int(cfg.get("port") or DEFAULT_PORT)
+    lines = [f"العنوان: {host or '(فارغ)'}", f"المنفذ: {port}"]
+    if not host:
+        lines.append("السبب المحتمل: لم يتم تحديد عنوان الجهاز الرئيسي.")
+        return "\n".join(lines)
+    # DNS/resolve
+    try:
+        ip = socket.gethostbyname(host)
+        lines.append(f"IP: {ip}")
+    except Exception as ex:
+        lines.append(f"فشل حل العنوان (DNS/Host): {ex}")
+        lines.append("تحقق: اسم الجهاز/IP صحيح، والجهازان على نفس الشبكة.")
+        return "\n".join(lines)
+    # TCP
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            lines.append("اتصال TCP: ناجح")
+    except Exception as ex:
+        lines.append(f"اتصال TCP: فشل ({ex})")
+        lines.append("تحقق: البرنامج مفتوح على الجهاز الرئيسي، وضع الخادم مفعل، الجدار الناري يسمح بالمنفذ، والجهازان على نفس Wi-Fi/LAN.")
+        return "\n".join(lines)
+    # HTTP ping
+    try:
+        res = ping(cfg, timeout=timeout)
+        if res.get("ok"):
+            lines.append(f"استجابة الخادم /ping: ناجحة ({res.get('server_name') or 'خدمات مصر'})")
+        else:
+            lines.append(f"استجابة الخادم /ping: مرفوضة ({res.get('error') or 'غير معروف'})")
+            lines.append("تحقق: رمز الربط (token) مطابق للجهاز الرئيسي.")
+    except Exception as ex:
+        lines.append(f"استجابة الخادم /ping: فشل ({ex})")
+        lines.append("تحقق: رمز الربط، وإصدار البرنامج، وأن الخادم يستجيب.")
+    return "\n".join(lines)
+
+
 def server_info(cfg):
     q = urllib.parse.quote(cfg.get("token", ""))
     return _get(base_url(cfg) + "/info?token=" + q, timeout=8)
@@ -508,7 +546,7 @@ class Server:
                     try:
                         self._audit(username, station, "UPDATE", "notes", "note_done #%s" % note_id)
                     except Exception:
-                        pass
+                        pass  # audit failure should not block note_done
                 return {"ok": True, "changed": cur.rowcount}
             except sqlite3.Error as e:
                 return {"ok": False, "error": str(e)}
@@ -765,6 +803,9 @@ class Server:
                     user = srv._user(req.get("user"))
                     if not user:
                         self._json({"ok": False, "error": "المستخدم غير مصرح"})
+                        return
+                    if not user.get("is_admin") and user.get("perms", {}).get("notes") not in ("add", "edit"):
+                        self._json({"ok": False, "error": "لا تملك صلاحية تحديث الملاحظات"})
                         return
                     try:
                         nid = int(req.get("id"))
